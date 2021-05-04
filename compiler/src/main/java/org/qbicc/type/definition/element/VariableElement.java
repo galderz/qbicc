@@ -89,6 +89,11 @@ public abstract class VariableElement extends AnnotatedElement implements NamedE
         return getTypeDescriptor().isClass2();
     }
 
+    @Override
+    public String toString() {
+        return name;
+    }
+
     public static abstract class Builder extends AnnotatedElement.Builder implements NamedElement.Builder {
         private String name;
         private TypeDescriptor typeDescriptor;
