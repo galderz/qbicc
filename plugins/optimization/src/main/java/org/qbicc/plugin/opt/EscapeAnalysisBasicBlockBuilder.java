@@ -3,7 +3,7 @@ package org.qbicc.plugin.opt;
 import org.qbicc.context.CompilationContext;
 import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.BasicBlockBuilder;
-import org.qbicc.graph.ConstructorInvocation;
+import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.DelegatingBasicBlockBuilder;
 import org.qbicc.graph.Load;
 import org.qbicc.graph.MemoryAtomicityMode;
@@ -33,10 +33,16 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         return connectionGraphs.computeIfAbsent(getCurrentElement(), e -> new ConnectionGraph());
     }
 
-    public Value invokeConstructor(Value instance, ConstructorElement target, List<Value> arguments) {
-        System.out.println("invokeConstructor (EA) : " + instance);
-        addFieldEdges(instance, arguments, connectionGraph());
-        return super.invokeConstructor(instance, target, arguments);
+    @Override
+    public Value call(ValueHandle target, List<Value> arguments) {
+        if (target instanceof ConstructorElementHandle) {
+            final ConstructorElementHandle constructorHandle = (ConstructorElementHandle) target;
+            System.out.println("invokeConstructor (EA) : " + constructorHandle.getInstance());
+            addFieldEdges(constructorHandle.getInstance(), arguments, connectionGraph());
+            return super.call(target, arguments);
+        }
+
+        return super.call(target, arguments);
     }
 
     public Value new_(ClassObjectType type) {
@@ -48,11 +54,11 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
     public Node store(ValueHandle handle, Value value, MemoryAtomicityMode mode) {
         // TODO initialize static fields with GlobalState
 
-        if (value instanceof ConstructorInvocation) {
-            connectionGraph().addPointsToEdge(handle, value);
-        } else if (value instanceof Load) {
-            connectionGraph().addDeferredEdge(handle, value);
-        }
+//        if (value instanceof ConstructorInvocation) {
+//            connectionGraph().addPointsToEdge(handle, value);
+//        } else if (value instanceof Load) {
+//            connectionGraph().addDeferredEdge(handle, value);
+//        }
 
         return super.store(handle, value, mode);
     }
@@ -82,10 +88,6 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
     public BasicBlock return_(Value value) {
         EscapeAnalysis.get(ctxt).argEscape(value);
         return super.return_(value);
-    }
-
-    public Node invokeStatic(MethodElement target, List<Value> arguments) {
-        return super.invokeStatic(target, arguments);    // TODO: Customise this generated block
     }
 
     private void addFieldEdges(Value value, List<Value> fields, ConnectionGraph cg) {
