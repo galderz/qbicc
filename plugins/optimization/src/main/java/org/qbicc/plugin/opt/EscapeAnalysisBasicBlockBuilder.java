@@ -1,25 +1,20 @@
 package org.qbicc.plugin.opt;
 
 import org.qbicc.context.CompilationContext;
-import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.BasicBlockBuilder;
 import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.DelegatingBasicBlockBuilder;
-import org.qbicc.graph.Load;
 import org.qbicc.graph.MemoryAtomicityMode;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
-import org.qbicc.graph.OrderedNode;
+import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.type.ClassObjectType;
-import org.qbicc.type.definition.element.ConstructorElement;
-import org.qbicc.type.definition.element.ExecutableElement;
-import org.qbicc.type.definition.element.MethodElement;
+import org.qbicc.type.definition.element.FieldElement;
+import org.qbicc.type.descriptor.TypeDescriptor;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder {
     private final CompilationContext ctxt;
@@ -29,9 +24,9 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         this.ctxt = ctxt;
     }
 
-    private void log(String format, Object... args) {
+    private static void log(String format, Object... args) {
         System.out.printf(
-            "(%s) [EA] %s%n"
+            "(%s) [ea-bbb] %s%n"
             , Thread.currentThread().getName()
             , String.format(format, args)
         );
@@ -74,6 +69,43 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
 
         return result;
     }
+
+    /**
+     * Workaround lack of local variables.
+     * So, to get represent the GC from 'a' to 'new T(...)',
+     * we hijack future 'a' references to fix the pointer.
+     * So, when 'a.x' is accessed, we fix the pointer from 'a' to 'new T(...)'.
+     */
+    @Override
+    public ValueHandle instanceFieldOf(ValueHandle handle, FieldElement field) {
+        if (handle instanceof ReferenceHandle) {
+            final ReferenceHandle refHandle = (ReferenceHandle) handle;
+            EscapeAnalysis.get(ctxt).fixPointsToIfNeeded(refHandle.getReferenceValue(), handle, getCurrentElement());
+        }
+
+        final ValueHandle result = super.instanceFieldOf(handle, field);
+        log("instanceFieldOf(%s) of returns %s", handle, result);
+        return result;
+    }
+
+//    // Workaround for lack of local variables in the CFG
+//    private void fixPointsToIfNeeded(Value value, ValueHandle handle) {
+//
+//
+////        if (current instanceof Value) {
+////            final Value value = (Value) current;
+////            final ConnectionGraph cg = connectionGraph();
+////            if (cg.fieldEdges.containsKey(value) && !cg.pointsToEdges.containsKey(handle)) {
+////                cg.addPointsToEdge(handle, value);
+////                return;
+////            }
+////        }
+////
+////        if (current instanceof OrderedNode) {
+////            fixPointsToIfNeeded(((OrderedNode) current).getDependency(), handle);
+////        }
+//    }
+
 
     public Value load(ValueHandle handle, MemoryAtomicityMode mode) {
         final Value result = super.load(handle, mode);

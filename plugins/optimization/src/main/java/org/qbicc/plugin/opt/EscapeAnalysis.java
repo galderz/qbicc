@@ -52,6 +52,11 @@ final class EscapeAnalysis {
         cg.addFieldEdges(value, arguments);
     }
 
+    public void fixPointsToIfNeeded(Value value, ValueHandle handle, ExecutableElement element) {
+        final ConnectionGraph cg = connectionGraph(element);
+        cg.fixPointsToIfNeeded(value, handle);
+    }
+
     static enum EscapeState {
         GLOBAL_ESCAPE, ARG_ESCAPE, NO_ESCAPE
 
@@ -77,7 +82,14 @@ final class EscapeAnalysis {
 
         void addPointsToEdge(ValueHandle handle, Value value) {
             pointsToEdges.put(handle, value);
-            escapeStates.put(value, EscapeState.NO_ESCAPE);
+            setNoEscape(value);
+        }
+
+        void fixPointsToIfNeeded(Value value, ValueHandle handle) {
+            if (fieldEdges.containsKey(value) && !pointsToEdges.containsKey(handle)) {
+                log("Fix points-to edge from %s to %s", handle, value);
+                pointsToEdges.put(handle, value);
+            }
         }
 
 //        void addDeferredEdge(ValueHandle handle, Value value) {
@@ -88,11 +100,25 @@ final class EscapeAnalysis {
         void addFieldEdges(Value value, List<Value> fields) {
             fieldEdges.put(value, fields);
             fields.forEach(field -> escapeStates.put(field, EscapeState.NO_ESCAPE));
+            log("Add field edges from %s to %s", value, fields);
+            setNoEscape(value);
+        }
+
+        private void setNoEscape(Value value) {
+            log("Set %s to NO_ESCAPE", value);
             escapeStates.put(value, EscapeState.NO_ESCAPE);
         }
 
 //        void setArgEscape(Node node) {
 //            // escapeStates.put(node, EscapeState.ARG_ESCAPE);
 //        }
+    }
+
+    private static void log(String format, Object... args) {
+        System.out.printf(
+            "(%s) [ea] %s%n"
+            , Thread.currentThread().getName()
+            , String.format(format, args)
+        );
     }
 }
