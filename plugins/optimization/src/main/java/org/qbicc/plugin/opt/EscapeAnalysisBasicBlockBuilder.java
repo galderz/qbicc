@@ -29,6 +29,14 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         this.ctxt = ctxt;
     }
 
+    private void log(String format, Object... args) {
+        System.out.printf(
+            "(%s) [EA] %s%n"
+            , Thread.currentThread().getName()
+            , String.format(format, args)
+        );
+    }
+
     /**
      * CG: new T(...)
      */
@@ -36,9 +44,10 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
     public Value call(ValueHandle target, List<Value> arguments) {
         if (target instanceof ConstructorElementHandle && ((ConstructorElementHandle) target).getInstance() instanceof New) {
             final Value value = ((ConstructorElementHandle) target).getInstance();
-            System.out.println("[" + Thread.currentThread().getName() + " ] invokeConstructor (EA) : " + value);
             EscapeAnalysis.get(ctxt).newObject(value, arguments, getCurrentElement());
-            return super.call(target, arguments);
+            final Value result = super.call(target, arguments);
+            log("invokeConstructor on %s returns %s", value, result);
+            return result;
         }
 
         return super.call(target, arguments);
@@ -46,14 +55,16 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
 
     public Value new_(ClassObjectType type) {
         final Value newValue = super.new_(type);
-        System.out.println("[" + Thread.currentThread().getName() + " ] new_ (EA) : " + type + ", returning: " + newValue);
+        log("new_(%s) returns %s", type, newValue);
         return newValue;
     }
 
     public Node store(ValueHandle handle, Value value, MemoryAtomicityMode mode) {
         // TODO initialize static fields with GlobalState
 
-        System.out.println("[" + Thread.currentThread().getName() + " ] store (EA) : " + value + ", into: " + handle);
+        final Node result = super.store(handle, value, mode);
+
+        log("store(%s) into %s returns %s", value, handle, result);
 
 //        if (value instanceof ConstructorInvocation) {
 //            connectionGraph().addPointsToEdge(handle, value);
@@ -61,15 +72,17 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
 //            connectionGraph().addDeferredEdge(handle, value);
 //        }
 
-        return super.store(handle, value, mode);
+        return result;
     }
 
-//    public Value load(ValueHandle handle, MemoryAtomicityMode mode) {
-//        final Value value = super.load(handle, mode);
-//        System.out.println("[" + Thread.currentThread().getName() + " ] load (EA) : " + value + ", into: " + handle);
-//        // fixPointsToIfNeeded(value, handle);
-//        return value;
-//    }
+    public Value load(ValueHandle handle, MemoryAtomicityMode mode) {
+        final Value result = super.load(handle, mode);
+
+        log("load(%s) returns %s", handle, result);
+
+        // fixPointsToIfNeeded(value, handle);
+        return result;
+    }
 
 //    // Workaround for lack of local variables in the CFG
 //    private void fixPointsToIfNeeded(Node current, ValueHandle handle) {
@@ -131,4 +144,6 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
 //            return es;
 //        }
     }
+    
+    
 }
