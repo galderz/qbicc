@@ -41,7 +41,7 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
             final Value value = ((ConstructorElementHandle) target).getInstance();
             EscapeAnalysis.get(ctxt).newObject(value, arguments, getCurrentElement());
             final Value result = super.call(target, arguments);
-            log("invokeConstructor on %s returns %s", value, result);
+            log("invokeConstructor(%s) returns %s", value, result);
             return result;
         }
 
@@ -72,19 +72,21 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
 
     /**
      * Workaround lack of local variables.
-     * So, to get represent the GC from 'a' to 'new T(...)',
+     *
+     * To get represent the GC from 'a' to 'new T(...)',
      * we hijack future 'a' references to fix the pointer.
-     * So, when 'a.x' is accessed, we fix the pointer from 'a' to 'new T(...)'.
+     * When 'a.x' is accessed, we fix the pointer from 'a' to 'new T(...)'.
      */
     @Override
     public ValueHandle instanceFieldOf(ValueHandle handle, FieldElement field) {
+        final ValueHandle result = super.instanceFieldOf(handle, field);
+        log("instanceFieldOf(%s->%s) of returns %s", handle, handle.getValueDependency(0), result);
+
         if (handle instanceof ReferenceHandle) {
             final ReferenceHandle refHandle = (ReferenceHandle) handle;
             EscapeAnalysis.get(ctxt).fixPointsToIfNeeded(refHandle.getReferenceValue(), handle, getCurrentElement());
         }
 
-        final ValueHandle result = super.instanceFieldOf(handle, field);
-        log("instanceFieldOf(%s) of returns %s", handle, result);
         return result;
     }
 

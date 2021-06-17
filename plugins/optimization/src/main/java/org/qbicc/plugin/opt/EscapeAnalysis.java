@@ -75,7 +75,7 @@ final class EscapeAnalysis {
 
     private static final class ConnectionGraph {
         private final Map<ValueHandle, Value> pointsToEdges = new HashMap<>(); // solid (P) edges
-        private final Map<ValueHandle, Value> deferredEdges = new HashMap<>(); // dashed (D) edges
+        private final Map<ValueHandle, ValueHandle> deferredEdges = new HashMap<>(); // dashed (D) edges
         private final Map<Value, List<Value>> fieldEdges = new HashMap<>(); // solid (F) edges
 
         private final Map<Node, EscapeState> escapeStates = new HashMap<>();
