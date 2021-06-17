@@ -8,6 +8,7 @@ import org.qbicc.graph.MemoryAtomicityMode;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.ReferenceHandle;
+import org.qbicc.graph.StaticField;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.type.ClassObjectType;
@@ -55,11 +56,12 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
     }
 
     public Node store(ValueHandle handle, Value value, MemoryAtomicityMode mode) {
-        // TODO initialize static fields with GlobalState
-
         final Node result = super.store(handle, value, mode);
-
         log("store(%s) into %s returns %s", value, handle, result);
+
+        if (handle instanceof StaticField) {
+            EscapeAnalysis.get(ctxt).staticStore(value, getCurrentElement());
+        }
 
 //        if (value instanceof ConstructorInvocation) {
 //            connectionGraph().addPointsToEdge(handle, value);

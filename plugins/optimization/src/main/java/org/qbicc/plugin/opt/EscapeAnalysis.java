@@ -57,6 +57,11 @@ final class EscapeAnalysis {
         cg.fixPointsToIfNeeded(value, handle);
     }
 
+    public void staticStore(Value value, ExecutableElement element) {
+        final ConnectionGraph cg = connectionGraph(element);
+        cg.setGlobalEscape(value);
+    }
+
     static enum EscapeState {
         GLOBAL_ESCAPE, ARG_ESCAPE, NO_ESCAPE
 
@@ -107,6 +112,11 @@ final class EscapeAnalysis {
         private void setNoEscape(Value value) {
             log("Set %s to NO_ESCAPE", value);
             escapeStates.put(value, EscapeState.NO_ESCAPE);
+        }
+
+        private void setGlobalEscape(Value value) {
+            log("Set %s to GLOBAL_ESCAPE", value);
+            escapeStates.replace(value, EscapeState.GLOBAL_ESCAPE);
         }
 
 //        void setArgEscape(Node node) {
