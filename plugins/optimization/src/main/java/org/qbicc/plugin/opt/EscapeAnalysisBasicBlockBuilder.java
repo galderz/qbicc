@@ -7,6 +7,7 @@ import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.DelegatingBasicBlockBuilder;
 import org.qbicc.graph.Load;
 import org.qbicc.graph.MemoryAtomicityMode;
+import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.OrderedNode;
 import org.qbicc.graph.Value;
@@ -22,23 +23,21 @@ import java.util.Map;
 
 public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder {
     private final CompilationContext ctxt;
-    private final Map<ExecutableElement, ConnectionGraph> connectionGraphs = new HashMap<>();
 
     public EscapeAnalysisBasicBlockBuilder(final CompilationContext ctxt, final BasicBlockBuilder delegate) {
         super(delegate);
         this.ctxt = ctxt;
     }
 
-    private ConnectionGraph connectionGraph() {
-        return connectionGraphs.computeIfAbsent(getCurrentElement(), e -> new ConnectionGraph());
-    }
-
+    /**
+     * CG: new T(...)
+     */
     @Override
     public Value call(ValueHandle target, List<Value> arguments) {
-        if (target instanceof ConstructorElementHandle) {
-            final ConstructorElementHandle constructorHandle = (ConstructorElementHandle) target;
-            System.out.println("invokeConstructor (EA) : " + constructorHandle.getInstance());
-            addFieldEdges(constructorHandle.getInstance(), arguments, connectionGraph());
+        if (target instanceof ConstructorElementHandle && ((ConstructorElementHandle) target).getInstance() instanceof New) {
+            final Value value = ((ConstructorElementHandle) target).getInstance();
+            System.out.println("[" + Thread.currentThread().getName() + " ] invokeConstructor (EA) : " + value);
+            EscapeAnalysis.get(ctxt).newObject(value, arguments, getCurrentElement());
             return super.call(target, arguments);
         }
 
@@ -47,12 +46,14 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
 
     public Value new_(ClassObjectType type) {
         final Value newValue = super.new_(type);
-        System.out.println("new_ (EA) : " + type + ", returning: " + newValue);
+        System.out.println("[" + Thread.currentThread().getName() + " ] new_ (EA) : " + type + ", returning: " + newValue);
         return newValue;
     }
 
     public Node store(ValueHandle handle, Value value, MemoryAtomicityMode mode) {
         // TODO initialize static fields with GlobalState
+
+        System.out.println("[" + Thread.currentThread().getName() + " ] store (EA) : " + value + ", into: " + handle);
 
 //        if (value instanceof ConstructorInvocation) {
 //            connectionGraph().addPointsToEdge(handle, value);
@@ -63,74 +64,35 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         return super.store(handle, value, mode);
     }
 
-    public Value load(ValueHandle handle, MemoryAtomicityMode mode) {
-        final Value value = super.load(handle, mode);
-        fixPointsToIfNeeded(value, handle);
-        return value;
-    }
+//    public Value load(ValueHandle handle, MemoryAtomicityMode mode) {
+//        final Value value = super.load(handle, mode);
+//        System.out.println("[" + Thread.currentThread().getName() + " ] load (EA) : " + value + ", into: " + handle);
+//        // fixPointsToIfNeeded(value, handle);
+//        return value;
+//    }
 
-    // Workaround for lack of local variables in the CFG
-    private void fixPointsToIfNeeded(Node current, ValueHandle handle) {
-        if (current instanceof Value) {
-            final Value value = (Value) current;
-            final ConnectionGraph cg = connectionGraph();
-            if (cg.fieldEdges.containsKey(value) && !cg.pointsToEdges.containsKey(handle)) {
-                cg.addPointsToEdge(handle, value);
-                return;
-            }
-        }
-
-        if (current instanceof OrderedNode) {
-            fixPointsToIfNeeded(((OrderedNode) current).getDependency(), handle);
-        }
-    }
-
-    public BasicBlock return_(Value value) {
-        EscapeAnalysis.get(ctxt).argEscape(value);
-        return super.return_(value);
-    }
-
-    private void addFieldEdges(Value value, List<Value> fields, ConnectionGraph cg) {
-        cg.fieldEdges.put(value, fields);
-        fields.forEach(field -> EscapeAnalysis.get(ctxt).noEscape(field));
-        EscapeAnalysis.get(ctxt).noEscape(value);
-    }
-
-    private static final class ConnectionGraph {
-        private final Map<ValueHandle, Value> pointsToEdges = new HashMap<>(); // solid (P) edges
-        private final Map<ValueHandle, Value> deferredEdges = new HashMap<>(); // dashed (D) edges
-        private final Map<Value, List<Value>> fieldEdges = new HashMap<>(); // solid (F) edges
-
-        // private final Map<Node, EscapeState> escapeStates = new HashMap<>();
-
-        void addPointsToEdge(ValueHandle handle, Value value) {
-            pointsToEdges.put(handle, value);
-            // TODO fix points-to escape state
-            // escapeStates.put(handle, EscapeState.NO_ESCAPE);
-        }
-
-        void addDeferredEdge(ValueHandle handle, Value value) {
-            deferredEdges.put(handle, value);
-            // TODO fix deferred edge escape state
-            // escapeStates.put(handle, EscapeState.NO_ESCAPE);
-        }
-
-//        void addFieldEdges(Value value, List<Value> fields) {
-//            fieldEdges.put(value, fields);
-//            fields.forEach(field -> escapeStates.put(field, EscapeState.NO_ESCAPE));
+//    // Workaround for lack of local variables in the CFG
+//    private void fixPointsToIfNeeded(Node current, ValueHandle handle) {
+//        if (current instanceof Value) {
+//            final Value value = (Value) current;
+//            final ConnectionGraph cg = connectionGraph();
+//            if (cg.fieldEdges.containsKey(value) && !cg.pointsToEdges.containsKey(handle)) {
+//                cg.addPointsToEdge(handle, value);
+//                return;
+//            }
 //        }
-
-//        void setArgEscape(Node node) {
-//            // escapeStates.put(node, EscapeState.ARG_ESCAPE);
+//
+//        if (current instanceof OrderedNode) {
+//            fixPointsToIfNeeded(((OrderedNode) current).getDependency(), handle);
 //        }
-    }
+//    }
 
 //    @Override
 //    public Value new_(ClassObjectType type) {
 //        return super.new_(type);
 //    }
 
-    //    @Override
+//    @Override
 //    public Node begin(BlockLabel blockLabel) {
 //        System.out.printf("begin(%s)%n", blockLabel.toString());
 //        return super.begin(blockLabel);

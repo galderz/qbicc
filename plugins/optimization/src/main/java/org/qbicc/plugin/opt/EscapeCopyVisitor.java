@@ -38,7 +38,7 @@ public class EscapeCopyVisitor implements NodeVisitor.Delegating<Node.Copier, Va
     @Override
     public Value visit(Node.Copier param, New original) {
         // TODO temporarily limit to example for easier testing
-        if (EscapeAnalysis.get(ctxt).notEscapingThread(original) && original.getClassObjectType().toString().contains("example")) {
+        if (EscapeAnalysis.get(ctxt).notEscapingMethod(original) && original.getClassObjectType().toString().contains("example")) {
             return stackAllocate(original.getClassObjectType(), param.getBlockBuilder());
         }
 

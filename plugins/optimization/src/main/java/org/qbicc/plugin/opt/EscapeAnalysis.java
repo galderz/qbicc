@@ -1,20 +1,21 @@
 package org.qbicc.plugin.opt;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.Optional;
 
 import org.qbicc.context.AttachmentKey;
 import org.qbicc.context.CompilationContext;
 import org.qbicc.graph.Node;
-import org.qbicc.type.definition.element.Element;
+import org.qbicc.graph.Value;
+import org.qbicc.graph.ValueHandle;
+import org.qbicc.type.definition.element.ExecutableElement;
 
 final class EscapeAnalysis {
     private static final AttachmentKey<EscapeAnalysis> KEY = new AttachmentKey<>();
 
-    private final Map<Node, EscapeState> escapeStates = new HashMap<>(128);
+    private final Map<ExecutableElement, ConnectionGraph> connectionGraphs = new HashMap<>();
 
     static EscapeAnalysis get(CompilationContext ctxt) {
         EscapeAnalysis escapeAnalysis = ctxt.getAttachment(KEY);
@@ -28,26 +29,27 @@ final class EscapeAnalysis {
         return escapeAnalysis;
     }
 
-    void noEscape(Node node) {
-        // System.out.println("No escape: " + element + ";" + (Objects.isNull(element) ? null : element.getClass()));
-        escapeStates.putIfAbsent(node, EscapeState.NO_ESCAPE);
+    private ConnectionGraph connectionGraph(ExecutableElement element) {
+        return connectionGraphs.computeIfAbsent(element, e -> new ConnectionGraph());
     }
 
-    void argEscape(Node node) {
-        // System.out.println("Arg escape: " + element + ";" + (Objects.isNull(element) ? null : element.getClass()));
-        escapeStates.put(node, EscapeState.ARG_ESCAPE);
+    boolean notEscapingMethod(Node node) {
+        return escapeState(node)
+            .filter(escapeState -> escapeState == EscapeState.NO_ESCAPE)
+            .isPresent();
     }
 
-    void copy(Node original, Node copy) {
-        final EscapeState previous = escapeStates.remove(original);
-        if (previous != null) {
-            escapeStates.put(copy, previous);
-        }
+    private Optional<EscapeState> escapeState(Node node) {
+        return connectionGraphs.values().stream()
+            .flatMap(cg -> cg.escapeStates.entrySet().stream())
+            .filter(e -> e.getKey().equals(node))
+            .map(Map.Entry::getValue)
+            .findFirst();
     }
 
-    boolean notEscapingThread(Node node) {
-        final EscapeState escapeState = escapeStates.get(node);
-        return escapeState == EscapeState.NO_ESCAPE || escapeState == EscapeState.ARG_ESCAPE;
+    public void newObject(Value value, List<Value> arguments, ExecutableElement element) {
+        final ConnectionGraph cg = connectionGraph(element);
+        cg.addFieldEdges(value, arguments);
     }
 
     static enum EscapeState {
@@ -63,6 +65,34 @@ final class EscapeAnalysis {
 //            }
 //
 //            return es;
+//        }
+    }
+
+    private static final class ConnectionGraph {
+        private final Map<ValueHandle, Value> pointsToEdges = new HashMap<>(); // solid (P) edges
+        private final Map<ValueHandle, Value> deferredEdges = new HashMap<>(); // dashed (D) edges
+        private final Map<Value, List<Value>> fieldEdges = new HashMap<>(); // solid (F) edges
+
+        private final Map<Node, EscapeState> escapeStates = new HashMap<>();
+
+        void addPointsToEdge(ValueHandle handle, Value value) {
+            pointsToEdges.put(handle, value);
+            escapeStates.put(value, EscapeState.NO_ESCAPE);
+        }
+
+//        void addDeferredEdge(ValueHandle handle, Value value) {
+//            deferredEdges.put(handle, value);
+//            escapeStates.put(value, EscapeState.NO_ESCAPE);
+//        }
+
+        void addFieldEdges(Value value, List<Value> fields) {
+            fieldEdges.put(value, fields);
+            fields.forEach(field -> escapeStates.put(field, EscapeState.NO_ESCAPE));
+            escapeStates.put(value, EscapeState.NO_ESCAPE);
+        }
+
+//        void setArgEscape(Node node) {
+//            // escapeStates.put(node, EscapeState.ARG_ESCAPE);
 //        }
     }
 }
