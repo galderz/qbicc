@@ -25,49 +25,29 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         this.ctxt = ctxt;
     }
 
-    private static void log(String format, Object... args) {
-        System.out.printf(
-            "(%s) [ea-bbb] %s%n"
-            , Thread.currentThread().getName()
-            , String.format(format, args)
-        );
-    }
-
     /**
      * CG: new T(...)
      */
     @Override
     public Value call(ValueHandle target, List<Value> arguments) {
         if (target instanceof ConstructorElementHandle && ((ConstructorElementHandle) target).getInstance() instanceof New) {
-            final Value value = ((ConstructorElementHandle) target).getInstance();
-            EscapeAnalysis.get(ctxt).newObject(value, arguments, getCurrentElement());
-            final Value result = super.call(target, arguments);
-            log("invokeConstructor(%s) returns %s", value, result);
-            return result;
+            return invokeConstructor(target, ((ConstructorElementHandle) target).getInstance(), arguments);
         }
 
         return super.call(target, arguments);
     }
 
-    public Value new_(ClassObjectType type) {
-        final Value newValue = super.new_(type);
-        log("new_(%s) returns %s", type, newValue);
-        return newValue;
+    private Value invokeConstructor(ValueHandle handle, Value value, List<Value> arguments) {
+        EscapeAnalysis.get(ctxt).newObject(value, arguments, getCurrentElement());
+        return super.call(handle, arguments);
     }
 
     public Node store(ValueHandle handle, Value value, MemoryAtomicityMode mode) {
         final Node result = super.store(handle, value, mode);
-        log("store(%s) into %s returns %s", value, handle, result);
 
         if (handle instanceof StaticField) {
             EscapeAnalysis.get(ctxt).staticStore(value, getCurrentElement());
         }
-
-//        if (value instanceof ConstructorInvocation) {
-//            connectionGraph().addPointsToEdge(handle, value);
-//        } else if (value instanceof Load) {
-//            connectionGraph().addDeferredEdge(handle, value);
-//        }
 
         return result;
     }
@@ -82,7 +62,6 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
     @Override
     public ValueHandle instanceFieldOf(ValueHandle handle, FieldElement field) {
         final ValueHandle result = super.instanceFieldOf(handle, field);
-        log("instanceFieldOf(%s->%s) of returns %s", handle, handle.getValueDependency(0), result);
 
         if (handle instanceof ReferenceHandle) {
             final ReferenceHandle refHandle = (ReferenceHandle) handle;
@@ -91,95 +70,4 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
 
         return result;
     }
-
-//    // Workaround for lack of local variables in the CFG
-//    private void fixPointsToIfNeeded(Value value, ValueHandle handle) {
-//
-//
-////        if (current instanceof Value) {
-////            final Value value = (Value) current;
-////            final ConnectionGraph cg = connectionGraph();
-////            if (cg.fieldEdges.containsKey(value) && !cg.pointsToEdges.containsKey(handle)) {
-////                cg.addPointsToEdge(handle, value);
-////                return;
-////            }
-////        }
-////
-////        if (current instanceof OrderedNode) {
-////            fixPointsToIfNeeded(((OrderedNode) current).getDependency(), handle);
-////        }
-//    }
-
-
-    public Value load(ValueHandle handle, MemoryAtomicityMode mode) {
-        final Value result = super.load(handle, mode);
-
-        log("load(%s) returns %s", handle, result);
-
-        // fixPointsToIfNeeded(value, handle);
-        return result;
-    }
-
-//    // Workaround for lack of local variables in the CFG
-//    private void fixPointsToIfNeeded(Node current, ValueHandle handle) {
-//        if (current instanceof Value) {
-//            final Value value = (Value) current;
-//            final ConnectionGraph cg = connectionGraph();
-//            if (cg.fieldEdges.containsKey(value) && !cg.pointsToEdges.containsKey(handle)) {
-//                cg.addPointsToEdge(handle, value);
-//                return;
-//            }
-//        }
-//
-//        if (current instanceof OrderedNode) {
-//            fixPointsToIfNeeded(((OrderedNode) current).getDependency(), handle);
-//        }
-//    }
-
-//    @Override
-//    public Value new_(ClassObjectType type) {
-//        return super.new_(type);
-//    }
-
-//    @Override
-//    public Node begin(BlockLabel blockLabel) {
-//        System.out.printf("begin(%s)%n", blockLabel.toString());
-//        return super.begin(blockLabel);
-//    }
-
-//    @Override
-//    public ExecutableElement setCurrentElement(ExecutableElement element) {
-//        System.out.printf("setCurrentElement(%s)%n", element);
-//        return super.setCurrentElement(element);    // TODO: Customise this generated block
-//    }
-//
-//    @Override
-//    public BasicBlock return_() {
-//        System.out.printf("return()%n");
-//        return super.return_();    // TODO: Customise this generated block
-//    }
-//
-//    @Override
-//    public BasicBlock return_(Value value) {
-//        System.out.printf("return(%s)%n", value);
-//        return super.return_(value);    // TODO: Customise this generated block
-//    }
-
-    static enum EscapeState {
-        GLOBAL_ESCAPE, ARG_ESCAPE, NO_ESCAPE
-
-//        EscapeState merge(EscapeState es) {
-//            if (es == NO_ESCAPE) {
-//                return this;
-//            }
-//
-//            if (es == GLOBAL_ESCAPE) {
-//                return GLOBAL_ESCAPE;
-//            }
-//
-//            return es;
-//        }
-    }
-    
-    
 }

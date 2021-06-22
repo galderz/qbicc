@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.qbicc.context.AttachmentKey;
 import org.qbicc.context.CompilationContext;
@@ -15,7 +16,7 @@ import org.qbicc.type.definition.element.ExecutableElement;
 final class EscapeAnalysis {
     private static final AttachmentKey<EscapeAnalysis> KEY = new AttachmentKey<>();
 
-    private final Map<ExecutableElement, ConnectionGraph> connectionGraphs = new HashMap<>();
+    private final Map<ExecutableElement, ConnectionGraph> connectionGraphs = new ConcurrentHashMap<>();
 
     static EscapeAnalysis get(CompilationContext ctxt) {
         EscapeAnalysis escapeAnalysis = ctxt.getAttachment(KEY);
@@ -79,9 +80,9 @@ final class EscapeAnalysis {
     }
 
     private static final class ConnectionGraph {
-        private final Map<ValueHandle, Value> pointsToEdges = new HashMap<>(); // solid (P) edges
-        private final Map<ValueHandle, ValueHandle> deferredEdges = new HashMap<>(); // dashed (D) edges
-        private final Map<Value, List<Value>> fieldEdges = new HashMap<>(); // solid (F) edges
+        private final Map<ValueHandle, Value> pointsToEdges = new ConcurrentHashMap<>(); // solid (P) edges
+        private final Map<ValueHandle, ValueHandle> deferredEdges = new ConcurrentHashMap<>(); // dashed (D) edges
+        private final Map<Value, List<Value>> fieldEdges = new ConcurrentHashMap<>(); // solid (F) edges
 
         private final Map<Node, EscapeState> escapeStates = new HashMap<>();
 
@@ -90,11 +91,13 @@ final class EscapeAnalysis {
             setNoEscape(value);
         }
 
-        void fixPointsToIfNeeded(Value value, ValueHandle handle) {
+        boolean fixPointsToIfNeeded(Value value, ValueHandle handle) {
             if (fieldEdges.containsKey(value) && !pointsToEdges.containsKey(handle)) {
-                log("Fix points-to edge from %s to %s", handle, value);
                 pointsToEdges.put(handle, value);
+                return true;
             }
+
+            return false;
         }
 
 //        void addDeferredEdge(ValueHandle handle, Value value) {
@@ -105,30 +108,15 @@ final class EscapeAnalysis {
         void addFieldEdges(Value value, List<Value> fields) {
             fieldEdges.put(value, fields);
             fields.forEach(field -> escapeStates.put(field, EscapeState.NO_ESCAPE));
-            log("Add field edges from %s to %s", value, fields);
             setNoEscape(value);
         }
 
         private void setNoEscape(Value value) {
-            log("Set %s to NO_ESCAPE", value);
             escapeStates.put(value, EscapeState.NO_ESCAPE);
         }
 
         private void setGlobalEscape(Value value) {
-            log("Set %s to GLOBAL_ESCAPE", value);
             escapeStates.replace(value, EscapeState.GLOBAL_ESCAPE);
         }
-
-//        void setArgEscape(Node node) {
-//            // escapeStates.put(node, EscapeState.ARG_ESCAPE);
-//        }
-    }
-
-    private static void log(String format, Object... args) {
-        System.out.printf(
-            "(%s) [ea] %s%n"
-            , Thread.currentThread().getName()
-            , String.format(format, args)
-        );
     }
 }
