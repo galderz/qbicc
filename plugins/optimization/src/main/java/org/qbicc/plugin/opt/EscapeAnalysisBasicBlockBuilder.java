@@ -11,9 +11,7 @@ import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.StaticField;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
-import org.qbicc.type.ClassObjectType;
 import org.qbicc.type.definition.element.FieldElement;
-import org.qbicc.type.descriptor.TypeDescriptor;
 
 import java.util.List;
 
@@ -25,9 +23,6 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         this.ctxt = ctxt;
     }
 
-    /**
-     * CG: new T(...)
-     */
     @Override
     public Value call(ValueHandle target, List<Value> arguments) {
         if (target instanceof ConstructorElementHandle && ((ConstructorElementHandle) target).getInstance() instanceof New) {
@@ -37,11 +32,20 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         return super.call(target, arguments);
     }
 
+    /**
+     * CG:
+     *     new T(...); // <--
+     */
     private Value invokeConstructor(ValueHandle handle, Value value, List<Value> arguments) {
         EscapeAnalysis.get(ctxt).newObject(value, arguments, getCurrentElement());
         return super.call(handle, arguments);
     }
 
+    /**
+     * CG:
+     *     static T a;
+     *     a = new T(); // <--
+     */
     public Node store(ValueHandle handle, Value value, MemoryAtomicityMode mode) {
         final Node result = super.store(handle, value, mode);
 
@@ -58,6 +62,9 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
      * To get represent the GC from 'a' to 'new T(...)',
      * we hijack future 'a' references to fix the pointer.
      * When 'a.x' is accessed, we fix the pointer from 'a' to 'new T(...)'.
+     *
+     * CG:
+     *     T a = new T(...); // <--
      */
     @Override
     public ValueHandle instanceFieldOf(ValueHandle handle, FieldElement field) {
