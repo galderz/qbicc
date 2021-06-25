@@ -7,6 +7,7 @@ import org.qbicc.graph.DelegatingBasicBlockBuilder;
 import org.qbicc.graph.MemoryAtomicityMode;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
+import org.qbicc.graph.ParameterValue;
 import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.StaticField;
 import org.qbicc.graph.Value;
@@ -76,5 +77,22 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         }
 
         return result;
+    }
+
+    @Override
+    public void startMethod(List<ParameterValue> arguments) {
+        arguments.forEach(this::trackArgument);
+        super.startMethod(arguments);
+    }
+
+    void trackArgument(ParameterValue argument) {
+        final ValueHandle phantomReference = pointerHandle(argument);
+        EscapeAnalysis.get(ctxt).methodEntry(argument, phantomReference, getCurrentElement());
+    }
+
+    @Override
+    public void finish() {
+        // TODO: summarise method cg
+        super.finish();
     }
 }

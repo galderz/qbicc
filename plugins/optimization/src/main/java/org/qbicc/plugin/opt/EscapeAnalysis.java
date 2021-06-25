@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.qbicc.context.AttachmentKey;
 import org.qbicc.context.CompilationContext;
 import org.qbicc.graph.Node;
+import org.qbicc.graph.ParameterValue;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.type.definition.element.ExecutableElement;
@@ -63,6 +64,13 @@ final class EscapeAnalysis {
         cg.setGlobalEscape(value);
     }
 
+    public void methodEntry(ParameterValue argument, ValueHandle phantomReference, ExecutableElement element) {
+        final ConnectionGraph cg = connectionGraph(element);
+        cg.addDeferredEdge(argument, phantomReference);
+        cg.setNoEscape(argument);
+        cg.setArgEscape(phantomReference);
+    }
+
     static enum EscapeState {
         GLOBAL_ESCAPE, ARG_ESCAPE, NO_ESCAPE
 
@@ -81,7 +89,7 @@ final class EscapeAnalysis {
 
     private static final class ConnectionGraph {
         private final Map<ValueHandle, Value> pointsToEdges = new ConcurrentHashMap<>(); // solid (P) edges
-        private final Map<ValueHandle, ValueHandle> deferredEdges = new ConcurrentHashMap<>(); // dashed (D) edges
+        private final Map<Value, ValueHandle> deferredEdges = new ConcurrentHashMap<>(); // dashed (D) edges
         private final Map<Value, List<Value>> fieldEdges = new ConcurrentHashMap<>(); // solid (F) edges
 
         private final Map<Node, EscapeState> escapeStates = new HashMap<>();
@@ -100,10 +108,9 @@ final class EscapeAnalysis {
             return false;
         }
 
-//        void addDeferredEdge(ValueHandle handle, Value value) {
-//            deferredEdges.put(handle, value);
-//            escapeStates.put(value, EscapeState.NO_ESCAPE);
-//        }
+        void addDeferredEdge(Value from, ValueHandle to) {
+            deferredEdges.put(from, to);
+        }
 
         void addFieldEdges(Value value, List<Value> fields) {
             fieldEdges.put(value, fields);
@@ -111,12 +118,16 @@ final class EscapeAnalysis {
             setNoEscape(value);
         }
 
-        private void setNoEscape(Value value) {
+        private void setNoEscape(Node value) {
             escapeStates.put(value, EscapeState.NO_ESCAPE);
         }
 
-        private void setGlobalEscape(Value value) {
-            escapeStates.replace(value, EscapeState.GLOBAL_ESCAPE);
+        private void setGlobalEscape(Node value) {
+            escapeStates.put(value, EscapeState.GLOBAL_ESCAPE);
+        }
+
+        private void setArgEscape(Node value) {
+            escapeStates.put(value, EscapeState.ARG_ESCAPE);
         }
     }
 }
