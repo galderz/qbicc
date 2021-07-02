@@ -2,14 +2,19 @@ package org.qbicc.plugin.opt;
 
 import org.qbicc.context.CompilationContext;
 import org.qbicc.graph.BasicBlockBuilder;
+import org.qbicc.graph.Call;
 import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.DelegatingBasicBlockBuilder;
+import org.qbicc.graph.InstanceFieldOf;
+import org.qbicc.graph.Load;
 import org.qbicc.graph.MemoryAtomicityMode;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
+import org.qbicc.graph.OrderedNode;
 import org.qbicc.graph.ParameterValue;
 import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.StaticField;
+import org.qbicc.graph.Store;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.type.definition.element.FieldElement;
@@ -38,7 +43,7 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
      *     new T(...); // <--
      */
     private Value invokeConstructor(ValueHandle handle, Value value, List<Value> arguments) {
-        EscapeAnalysis.get(ctxt).newObject(value, arguments, getCurrentElement());
+        EscapeAnalysis.get(ctxt).setNoEscape(getCurrentElement(), value);
         return super.call(handle, arguments);
     }
 
@@ -51,8 +56,11 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
         final Node result = super.store(handle, value, mode);
 
         if (handle instanceof StaticField) {
-            EscapeAnalysis.get(ctxt).staticStore(value, getCurrentElement());
+            EscapeAnalysis.get(ctxt).setGlobalEscape(getCurrentElement(), value);
         }
+//        else if (handle instanceof InstanceFieldOf) {
+//            EscapeAnalysis.get(ctxt).fieldStore(handle.getValueHandle(), value, getCurrentElement());
+//        }
 
         return result;
     }
@@ -73,26 +81,41 @@ public class EscapeAnalysisBasicBlockBuilder extends DelegatingBasicBlockBuilder
 
         if (handle instanceof ReferenceHandle) {
             final ReferenceHandle refHandle = (ReferenceHandle) handle;
-            EscapeAnalysis.get(ctxt).fixPointsToIfNeeded(refHandle.getReferenceValue(), handle, getCurrentElement());
+            final Node target = refHandle.getReferenceValue();
+            handleReference(handle, result, target);
         }
 
         return result;
     }
 
+    private void handleReference(ValueHandle handle, ValueHandle field, Node target) {
+        if (target instanceof New) {
+            EscapeAnalysis.get(ctxt).addFieldEdgeIfAbsent(getCurrentElement(), (New) target, field);
+            EscapeAnalysis.get(ctxt).addPointsToEdgeIfAbsent(getCurrentElement(), handle, (New) target);
+        } else if (target instanceof ParameterValue) {
+            EscapeAnalysis.get(ctxt).fieldAccessParam((ParameterValue) target, handle, getCurrentElement());
+        } else if (target instanceof Load
+            || target instanceof Store
+            || target instanceof Call
+        ) {
+            handleReference(handle, field, ((OrderedNode) target).getDependency());
+        }
+    }
+
     @Override
     public void startMethod(List<ParameterValue> arguments) {
-        arguments.forEach(this::trackArgument);
+        // arguments.forEach(this::trackArgument);
         super.startMethod(arguments);
     }
 
-    void trackArgument(ParameterValue argument) {
-        final ValueHandle phantomReference = pointerHandle(argument);
-        EscapeAnalysis.get(ctxt).methodEntry(argument, phantomReference, getCurrentElement());
-    }
+//    void trackArgument(ParameterValue argument) {
+//        final ValueHandle phantomReference = pointerHandle(argument);
+//        EscapeAnalysis.get(ctxt).methodEntry(argument, phantomReference, getCurrentElement());
+//    }
 
     @Override
     public void finish() {
-        // TODO: summarise method cg
+        EscapeAnalysis.get(ctxt).methodExit(getCurrentElement());
         super.finish();
     }
 }
