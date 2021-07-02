@@ -113,6 +113,11 @@ import org.qbicc.plugin.opt.LocalMemoryTrackingBasicBlockBuilder;
 import org.qbicc.plugin.opt.InliningBasicBlockBuilder;
 import org.qbicc.plugin.opt.PhiOptimizerVisitor;
 import org.qbicc.plugin.opt.SimpleOptBasicBlockBuilder;
+import org.qbicc.plugin.opt.ea.EscapeAnalysisInterMethodAnalysis;
+import org.qbicc.plugin.opt.ea.EscapeAnalysisIntraMethodBuilder;
+import org.qbicc.plugin.opt.ea.ConnectionGraphDotGenerator;
+import org.qbicc.plugin.opt.ea.EscapeAnalysisOptimizeVisitor;
+import org.qbicc.plugin.opt.ea.EscapeAnalysisState;
 import org.qbicc.plugin.reachability.ReachabilityInfo;
 import org.qbicc.plugin.reachability.ReachabilityBlockBuilder;
 import org.qbicc.plugin.serialization.ClassObjectSerializer;
@@ -403,6 +408,7 @@ public class Main implements Callable<DiagnosticContext> {
                                 builder.addPreHook(Phase.ANALYZE, ReachabilityInfo::forceCoreClassesReachable);
                                 builder.addElementHandler(Phase.ANALYZE, new ElementBodyCopier());
                                 builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new DotGenerator(Phase.ANALYZE, graphGenConfig)));
+                                builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new ConnectionGraphDotGenerator("intra")));
                                 if (optGotos) {
                                     builder.addCopyFactory(Phase.ANALYZE, GotoRemovingVisitor::new);
                                 }
@@ -422,16 +428,20 @@ public class Main implements Callable<DiagnosticContext> {
                                 if (optInlining) {
                                     builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, InliningBasicBlockBuilder::new);
                                 }
+                                builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, EscapeAnalysisIntraMethodBuilder::new);
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, ReachabilityBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, LocalVariableFindingBasicBlockBuilder::new);
                                 builder.addPostHook(Phase.ANALYZE, ReachabilityInfo::reportStats);
                                 // todo: restore when adapted for run time initializers
                                 //builder.addPostHook(Phase.ANALYZE, new ClassInitializerRegister());
+                                builder.addPostHook(Phase.ANALYZE, new EscapeAnalysisInterMethodAnalysis());
+                                builder.addPostHook(Phase.ANALYZE, new ConnectionGraphDotGenerator("inter"));
                                 builder.addPostHook(Phase.ANALYZE, new DispatchTableBuilder());
                                 builder.addPostHook(Phase.ANALYZE, new SupersDisplayBuilder());
 
                                 builder.addPreHook(Phase.LOWER, Layout::unlock);
                                 builder.addPreHook(Phase.LOWER, new ClassObjectSerializer());
+                                builder.addCopyFactory(Phase.LOWER, EscapeAnalysisOptimizeVisitor::new);
                                 builder.addElementHandler(Phase.LOWER, new FunctionLoweringElementHandler());
                                 builder.addElementHandler(Phase.LOWER, new NativeXtorLoweringElementHandler());
                                 builder.addElementHandler(Phase.LOWER, new ElementVisitorAdapter(new DotGenerator(Phase.LOWER, graphGenConfig)));
