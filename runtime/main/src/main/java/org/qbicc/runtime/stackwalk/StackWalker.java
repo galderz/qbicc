@@ -17,7 +17,7 @@ public class StackWalker {
         int index = 0;
         while (unw_step(cursor).intValue() > 0) {
             unw_get_reg(cursor, UNW_REG_IP, ip);
-            unw_get_reg(cursor, UNW_REG_IP, sp);
+            unw_get_reg(cursor, UNW_REG_IP, sp); // TODO should be `UNW_REG_SP` instead of `UNW_REG_IP`
 
             visitor.visitFrame(index, ip.deref().longValue(), sp.deref().longValue());
             index += 1;
