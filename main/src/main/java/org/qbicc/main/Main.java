@@ -77,9 +77,9 @@ import org.qbicc.plugin.native_.NativeTypeResolver;
 import org.qbicc.plugin.native_.PointerBasicBlockBuilder;
 import org.qbicc.plugin.native_.PointerTypeResolver;
 import org.qbicc.plugin.objectmonitor.ObjectMonitorBasicBlockBuilder;
+import org.qbicc.plugin.opt.EscapeAnalysis;
 import org.qbicc.plugin.opt.EscapeAnalysisBasicBlockBuilder;
 import org.qbicc.plugin.opt.EscapeAnalysisOptimizeVisitor;
-import org.qbicc.plugin.opt.EscapeAnalysisUpdateCallerBasicBlockBuilder;
 import org.qbicc.plugin.opt.GotoRemovingVisitor;
 import org.qbicc.plugin.opt.LocalMemoryTrackingBasicBlockBuilder;
 import org.qbicc.plugin.opt.InliningBasicBlockBuilder;
@@ -325,7 +325,6 @@ public class Main implements Callable<DiagnosticContext> {
                                 builder.addBuilderFactory(Phase.ADD, BuilderStage.CORRECT, RuntimeChecksBasicBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ADD, BuilderStage.CORRECT, LocalThrowHandlingBasicBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ADD, BuilderStage.OPTIMIZE, SimpleOptBasicBlockBuilder::new);
-                                builder.addBuilderFactory(Phase.ADD, BuilderStage.OPTIMIZE, EscapeAnalysisBasicBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ADD, BuilderStage.INTEGRITY, ReachabilityBlockBuilder::new);
                                 builder.addPostHook(Phase.ADD, RTAInfo::clear);
 
@@ -344,16 +343,18 @@ public class Main implements Callable<DiagnosticContext> {
                                 }
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.CORRECT, NumericalConversionBasicBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, SimpleOptBasicBlockBuilder::new);
-                                builder.addCopyFactory(Phase.ANALYZE, EscapeAnalysisOptimizeVisitor::new);
                                 if (optInlining) {
                                     builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, InliningBasicBlockBuilder::new);
                                 }
+                                builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, EscapeAnalysisBasicBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, ReachabilityBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, LocalVariableFindingBasicBlockBuilder::new);
                                 builder.addPostHook(Phase.ANALYZE, new ClassInitializerRegister());
                                 builder.addPostHook(Phase.ANALYZE, new DispatchTableBuilder());
                                 builder.addPostHook(Phase.ANALYZE, new SupersDisplayBuilder());
+                                builder.addPostHook(Phase.ANALYZE, EscapeAnalysis::interProcedureAnalysis);
 
+                                builder.addCopyFactory(Phase.LOWER, EscapeAnalysisOptimizeVisitor::new);
                                 builder.addElementHandler(Phase.LOWER, new FunctionLoweringElementHandler());
                                 builder.addElementHandler(Phase.LOWER, new ElementVisitorAdapter(new DotGenerator(Phase.LOWER, graphGenConfig)));
                                 if (optGotos) {
