@@ -102,6 +102,19 @@ final class ConnectionGraph {
         return EscapeValue.isNoEscape(escapeValues.get(new_));
     }
 
+    EscapeValue getEscapeValue(Node node) {
+        return escapeValues.get(node);
+    }
+
+     Collection<InstanceFieldOf> getFields(New new_) {
+         final Collection<InstanceFieldOf> fields = fieldEdges.get(new_);
+         return Objects.isNull(fields) ? Collections.emptyList() : fields;
+    }
+
+    ValueHandle getDeferred(Node node) {
+        return deferredEdges.get(node);
+    }
+
     void propagateArgEscape() {
         final List<Node> argEscapeOnly = escapeValues.entrySet().stream()
             .filter(e -> e.getValue().isArgEscape())
