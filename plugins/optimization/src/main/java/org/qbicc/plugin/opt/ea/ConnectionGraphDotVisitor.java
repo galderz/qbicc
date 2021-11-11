@@ -44,6 +44,14 @@ import org.qbicc.graph.ExtractMember;
 import org.qbicc.graph.Fence;
 import org.qbicc.graph.FunctionElementHandle;
 import org.qbicc.graph.GetAndAdd;
+import org.qbicc.graph.GetAndBitwiseAnd;
+import org.qbicc.graph.GetAndBitwiseNand;
+import org.qbicc.graph.GetAndBitwiseOr;
+import org.qbicc.graph.GetAndBitwiseXor;
+import org.qbicc.graph.GetAndSet;
+import org.qbicc.graph.GetAndSetMax;
+import org.qbicc.graph.GetAndSetMin;
+import org.qbicc.graph.GetAndSub;
 import org.qbicc.graph.GlobalVariable;
 import org.qbicc.graph.Goto;
 import org.qbicc.graph.If;
@@ -83,6 +91,7 @@ import org.qbicc.graph.OrderedNode;
 import org.qbicc.graph.ParameterValue;
 import org.qbicc.graph.PhiValue;
 import org.qbicc.graph.PointerHandle;
+import org.qbicc.graph.ReadModifyWriteValue;
 import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.Ret;
 import org.qbicc.graph.Return;
@@ -118,6 +127,7 @@ import org.qbicc.graph.literal.IntegerLiteral;
 import org.qbicc.graph.literal.MethodHandleLiteral;
 import org.qbicc.graph.literal.NullLiteral;
 import org.qbicc.graph.literal.ObjectLiteral;
+import org.qbicc.graph.literal.ProgramObjectLiteral;
 import org.qbicc.graph.literal.StringLiteral;
 import org.qbicc.graph.literal.TypeLiteral;
 import org.qbicc.graph.literal.UndefinedLiteral;
@@ -314,6 +324,10 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
     public String visit(final Appendable param, final CallNoReturn node) {
         String name = register(node);
         processDependency(param, node.getDependency());
+        processDependency(param, node.getValueHandle());
+        for (Value arg : node.getArguments()) {
+            processDependency(param, arg);
+        }
         appendTo(param, "}");
         nl(param);
         return name;
@@ -321,28 +335,69 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
 
     // terminator
     public String visit(Appendable param, Invoke node) {
-        return bypassTerminator(param, node);
+        String name = register(node);
+        processDependency(param, node.getDependency());
+        processDependency(param, node.getValueHandle());
+        for (Value arg : node.getArguments()) {
+            processDependency(param, arg);
+        }
+        appendTo(param, "}");
+        nl(param);
+        addToQueue(node.getCatchBlock());
+        addToQueue(node.getResumeTarget());
+        return name;
     }
 
     // terminator
 
     public String visit(Appendable param, InvokeNoReturn node) {
-        return bypassTerminator(param, node);
+        String name = register(node);
+        processDependency(param, node.getDependency());
+        processDependency(param, node.getValueHandle());
+        for (Value arg : node.getArguments()) {
+            processDependency(param, arg);
+        }
+        appendTo(param, "}");
+        nl(param);
+        addToQueue(node.getCatchBlock());
+        return name;
     }
     // terminator
 
     public String visit(Appendable param, TailCall node) {
-        return bypassTerminator(param, node);
+        String name = register(node);
+        processDependency(param, node.getDependency());
+        processDependency(param, node.getValueHandle());
+        for (Value arg : node.getArguments()) {
+            processDependency(param, arg);
+        }
+        appendTo(param, "}");
+        nl(param);
+        return name;
     }
     // terminator
 
     public String visit(Appendable param, TailInvoke node) {
-        return bypassTerminator(param, node);
+        String name = register(node);
+        processDependency(param, node.getDependency());
+        processDependency(param, node.getValueHandle());
+        for (Value arg : node.getArguments()) {
+            processDependency(param, arg);
+        }
+        appendTo(param, "}");
+        nl(param);
+        addToQueue(node.getCatchBlock());
+        return name;
     }
     // terminator
 
     public String visit(final Appendable param, final Goto node) {
-        return bypassTerminator(param, node);
+        String name = register(node);
+        processDependency(param, node.getDependency());
+        appendTo(param, "}");
+        nl(param);
+        addToQueue(node.getResumeTarget());
+        return name;
     }
     // terminator
 
@@ -374,7 +429,8 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
     // terminator
 
     public String visit(final Appendable param, final Invoke.ReturnValue node) {
-        return bypassTerminator(param, node);
+        processDependency(param, node.getInvoke());
+        return visited.get(node.getInvoke());
     }
     // terminator
 
@@ -384,7 +440,15 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
     // terminator
 
     public String visit(final Appendable param, final Switch node) {
-        return bypassTerminator(param, node);
+        String name = register(node);
+        processDependency(param, node.getDependency());
+        appendTo(param, "}");
+        nl(param);
+        int cnt = node.getNumberOfValues();
+        for (int i = 0; i < cnt; i++) {
+            addToQueue(node.getTargetForIndex(i));
+        }
+        return name;
     }
     // terminator
 
@@ -554,13 +618,59 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
         return register(node);
     }
 
-    @Override
-    public String visit(Appendable param, GetAndAdd node) {
+    private String node(Appendable param, ReadModifyWriteValue node) {
         String name = register(node);
-        processDependency(param, node.getDependency());
+        if (node instanceof OrderedNode on) {
+            processDependency(param, on.getDependency());
+        }
         processDependency(param, node.getValueHandle());
         processDependency(param, node.getUpdateValue());
         return name;
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndAdd node) {
+        return node(param, node);
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndSet node) {
+        return node(param, node);
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndBitwiseAnd node) {
+        return node(param, node);
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndBitwiseNand node) {
+        return node(param, node);
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndBitwiseOr node) {
+        return node(param, node);
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndBitwiseXor node) {
+        return node(param, node);
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndSetMax node) {
+        return node(param, node);
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndSetMin node) {
+        return node(param, node);
+    }
+
+    @Override
+    public String visit(Appendable param, GetAndSub node) {
+        return node(param, node);
     }
 
     @Override
@@ -702,7 +812,7 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
     public String visit(Appendable param, New node) {
         String name = register(node);
         appendTo(param, name);
-        attr(param, "label", "new\\n" + node.getType().getUpperBound().toString()); // TODO copied from DotNodeVisitor
+        attr(param, "label", "new\\n" + show(node));
         attr(param, "style", "filled");
         attr(param, "fillcolor", String.valueOf(nodeType(connectionGraph.getEscapeValue(node)).fillColor));
         nl(param);
@@ -712,6 +822,10 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
             addEdge(param, name, fieldName, EdgeType.FIELD);
         }
         return name;
+    }
+
+    private String show(New node) {
+        return node.getType().getUpperBound().toString();
     }
 
     @Override
@@ -781,7 +895,13 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
 
     @Override
     public String visit(final Appendable param, final PhiValue node) {
-        return register(node);
+        String name = register(node);
+        appendTo(param, name);
+        attr(param, "label", "phi");
+        attr(param, "style", "filled");
+        attr(param, "fillcolor", String.valueOf(nodeType(connectionGraph.getEscapeValue(node)).fillColor));
+        nl(param);
+        return name;
     }
 
     @Override
@@ -830,6 +950,11 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
 
     @Override
     public String visit(final Appendable param, final StringLiteral node) {
+        return register(node);
+    }
+
+    @Override
+    public String visit(final Appendable param, final ProgramObjectLiteral node) {
         return register(node);
     }
 

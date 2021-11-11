@@ -17,6 +17,7 @@ import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.OrderedNode;
 import org.qbicc.graph.ParameterValue;
+import org.qbicc.graph.PhiValue;
 import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.StaticField;
 import org.qbicc.graph.Store;
@@ -25,7 +26,6 @@ import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.type.ClassObjectType;
 import org.qbicc.type.ObjectType;
-import org.qbicc.type.ReferenceType;
 import org.qbicc.type.definition.element.FieldElement;
 
 public final class EscapeAnalysisIntraMethodBuilder extends DelegatingBasicBlockBuilder  {
@@ -129,6 +129,8 @@ public final class EscapeAnalysisIntraMethodBuilder extends DelegatingBasicBlock
 
         if (value instanceof New) {
             connectionGraph.trackThrowNew((New) value);
+        } else if (value instanceof PhiValue phi) {
+            connectionGraph.trackPhiValue(phi);
         }
 
         return result;
@@ -141,10 +143,10 @@ public final class EscapeAnalysisIntraMethodBuilder extends DelegatingBasicBlock
         return result;
     }
 
-    // TODO remove
     @Override
     public void finish() {
         super.finish();
+        connectionGraph.resolvePhiValues();
     }
 
     private void handleInstanceFieldOf(InstanceFieldOf result, ValueHandle handle, Node target) {

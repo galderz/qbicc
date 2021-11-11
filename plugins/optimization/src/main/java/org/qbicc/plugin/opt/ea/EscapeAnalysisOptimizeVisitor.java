@@ -39,6 +39,8 @@ public final class EscapeAnalysisOptimizeVisitor implements NodeVisitor.Delegati
     public Value visit(Node.Copier param, New original) {
         final BasicBlockBuilder bbb = param.getBlockBuilder();
         if (EscapeAnalysisState.get(ctxt).isNotEscapingMethod(original, bbb.getCurrentElement())) {
+            // Copy dependency so that stack allocation can be scheduled in the right place
+            param.copyNode(original.getDependency());
             return stackAllocate(original, bbb);
         }
 

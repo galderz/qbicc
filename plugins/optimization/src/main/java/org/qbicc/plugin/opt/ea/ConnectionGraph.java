@@ -17,6 +17,7 @@ import org.qbicc.graph.LocalVariable;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.ParameterValue;
+import org.qbicc.graph.PhiValue;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 
@@ -75,6 +76,13 @@ final class ConnectionGraph {
         // New allocations thrown assumed to escape as arguments
         // TODO Could it be possible to only mark as argument escaping those that escape the method?
         setEscapeValue(value, EscapeValue.ARG_ESCAPE);
+    }
+    
+    void trackPhiValue(PhiValue value) {
+        // Track phi nodes temporarily until finish,
+        // when the possible incoming values can be calculated
+        // TODO remove PhiValues once possible values calculated
+        setEscapeValue(value, EscapeValue.UNKNOWN);
     }
 
     void trackCast(CheckCast checkCast) {
@@ -262,6 +270,19 @@ final class ConnectionGraph {
         }
 
         return this;
+    }
+
+    void resolvePhiValues() {
+        final List<Value> possiblePhiValues = this.escapeValues.keySet().stream()
+            .filter(key -> key instanceof PhiValue)
+            .flatMap(key -> ((PhiValue) key).getPossibleValues().stream())
+            .collect(Collectors.toList());
+
+        // Separate computing from filtering since it modifies the collection itself
+        // TODO merge value check of New with above when this works
+        possiblePhiValues.stream()
+            .filter(value -> value instanceof New)
+            .forEach(value -> setEscapeValue(value, EscapeValue.ARG_ESCAPE));
     }
 
     private Map<Node, EscapeValue> mergeEscapeValues(ConnectionGraph other) {
