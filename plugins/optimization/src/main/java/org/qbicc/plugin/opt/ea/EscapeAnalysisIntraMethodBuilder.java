@@ -15,6 +15,7 @@ import org.qbicc.graph.LocalVariable;
 import org.qbicc.graph.MemoryAtomicityMode;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
+import org.qbicc.graph.NotNull;
 import org.qbicc.graph.OrderedNode;
 import org.qbicc.graph.ParameterValue;
 import org.qbicc.graph.PhiValue;
@@ -82,8 +83,12 @@ public final class EscapeAnalysisIntraMethodBuilder extends DelegatingBasicBlock
         final Node result = super.store(handle, value, mode);
 
         if (handle instanceof StaticField) {
-            // static T a = new T();
-            connectionGraph.trackStoreStaticField(handle, value);
+            // static T a = ...
+            if (value instanceof NotNull nn) {
+                connectionGraph.trackStoreStaticField(handle, nn.getInput());
+            } else {
+                connectionGraph.trackStoreStaticField(handle, value);
+            }
         } else if (handle instanceof InstanceFieldOf && value instanceof New) {
             // p.f = new T(); // where p is a parameter
             connectionGraph.fixEdgesNew(handle, (New) value);

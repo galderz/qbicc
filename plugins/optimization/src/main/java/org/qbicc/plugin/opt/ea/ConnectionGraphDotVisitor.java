@@ -30,8 +30,11 @@ import org.qbicc.graph.Cmp;
 import org.qbicc.graph.CmpAndSwap;
 import org.qbicc.graph.CmpG;
 import org.qbicc.graph.CmpL;
+import org.qbicc.graph.Comp;
 import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.Convert;
+import org.qbicc.graph.CountLeadingZeros;
+import org.qbicc.graph.CountTrailingZeros;
 import org.qbicc.graph.CurrentThreadRead;
 import org.qbicc.graph.DebugAddressDeclaration;
 import org.qbicc.graph.Div;
@@ -564,6 +567,21 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
         processDependency(param, node.getDependency());
         // processDependency(param, node.getInput()); // TODO is this missing?
         return name;
+    }
+
+    @Override
+    public String visit(final Appendable param, final Comp node) {
+        return bypass(param, node);
+    }
+
+    @Override
+    public String visit(final Appendable param, final CountLeadingZeros node) {
+        return bypass(param, node);
+    }
+
+    @Override
+    public String visit(final Appendable param, final CountTrailingZeros node) {
+        return bypass(param, node);
     }
 
     @Override
