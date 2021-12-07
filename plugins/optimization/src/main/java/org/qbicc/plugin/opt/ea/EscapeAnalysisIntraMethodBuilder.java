@@ -43,8 +43,8 @@ public final class EscapeAnalysisIntraMethodBuilder extends DelegatingBasicBlock
     }
 
     @Override
-    public Value new_(ClassObjectType type) {
-        final New result = (New) super.new_(type);
+    public Value new_(final ClassObjectType type, final Value typeId, final Value size, final Value align) {
+        final New result = (New) super.new_(type, typeId, size, align);
 
         connectionGraph.trackNew(result, defaultEscapeValue(type));
 
