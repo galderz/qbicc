@@ -85,6 +85,7 @@ import org.qbicc.graph.Multiply;
 import org.qbicc.graph.Neg;
 import org.qbicc.graph.New;
 import org.qbicc.graph.NewArray;
+import org.qbicc.graph.NewReferenceArray;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
 import org.qbicc.graph.NotNull;
@@ -849,6 +850,15 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
     @Override
     public String visit(final Appendable param, final NewArray node) {
         String name = bypass(param, node);
+        processDependency(param, node.getSize());
+        return name;
+    }
+
+    @Override
+    public String visit(final Appendable param, final NewReferenceArray node) {
+        String name = bypass(param, node);
+        processDependency(param, node.getElemTypeId());
+        processDependency(param, node.getDimensions());
         processDependency(param, node.getSize());
         return name;
     }

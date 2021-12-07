@@ -86,7 +86,7 @@ public final class EscapeAnalysisOptimizeVisitor implements NodeVisitor.Delegati
         // zero initialize the object's instance fields
         MethodElement method = zeroMethod;
         final ValueHandle zeroCall = bbb.staticMethod(method, method.getDescriptor(), method.getType());
-        final List<Value> zeroParams = List.of(bbb.bitCast(ptrVal, type.getReference()), lf.literalOf(info.getCompoundType().getSize()));
+        final List<Value> zeroParams = List.of(oop, lf.literalOf(info.getCompoundType().getSize()));
         bbb.call(zeroCall, zeroParams);
 
         return oop;
