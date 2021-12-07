@@ -6,6 +6,7 @@ import org.qbicc.context.ClassContext;
 import org.qbicc.context.CompilationContext;
 import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.BasicBlockBuilder;
+import org.qbicc.graph.MemoryAtomicityMode;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
@@ -13,12 +14,15 @@ import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.literal.IntegerLiteral;
 import org.qbicc.graph.literal.LiteralFactory;
+import org.qbicc.plugin.coreclasses.CoreClasses;
 import org.qbicc.plugin.layout.Layout;
 import org.qbicc.plugin.layout.LayoutInfo;
 import org.qbicc.type.ClassObjectType;
 import org.qbicc.type.CompoundType;
+import org.qbicc.type.IntegerType;
 import org.qbicc.type.definition.DefinedTypeDefinition;
 import org.qbicc.type.definition.LoadedTypeDefinition;
+import org.qbicc.type.definition.element.FieldElement;
 import org.qbicc.type.definition.element.MethodElement;
 
 public final class EscapeAnalysisOptimizeVisitor implements NodeVisitor.Delegating<Node.Copier, Value, Node, BasicBlock, ValueHandle> {
@@ -84,12 +88,22 @@ public final class EscapeAnalysisOptimizeVisitor implements NodeVisitor.Delegati
         Value oop = bbb.valueConvert(ptrVal, type.getReference());
 
         // zero initialize the object's instance fields
-        MethodElement method = zeroMethod;
-        final ValueHandle zeroCall = bbb.staticMethod(method, method.getDescriptor(), method.getType());
-        final List<Value> zeroParams = List.of(oop, lf.literalOf(info.getCompoundType().getSize()));
-        bbb.call(zeroCall, zeroParams);
+        initializeObjectFieldsToZero(info, lf, oop, bbb);
+        // initialize object header
+        initializeObjectHeader(CoreClasses.get(ctxt), bbb.referenceHandle(oop), ctxt.getLiteralFactory().literalOfType(type), bbb);
 
         return oop;
+    }
+
+    private void initializeObjectFieldsToZero(final LayoutInfo info, final LiteralFactory lf, final Value oop, final BasicBlockBuilder bbb) {
+        bbb.call(bbb.staticMethod(zeroMethod, zeroMethod.getDescriptor(), zeroMethod.getType()), List.of(oop, lf.literalOf(info.getCompoundType().getSize())));
+    }
+
+    // TODO copied from BasicInitializationBasicBlockBuilder
+    private void initializeObjectHeader(final CoreClasses coreClasses, final ValueHandle handle, final Value typeId, final BasicBlockBuilder bbb) {
+        bbb.store(bbb.instanceFieldOf(handle, coreClasses.getObjectTypeIdField()), typeId, MemoryAtomicityMode.UNORDERED);
+        FieldElement monitorField = coreClasses.getObjectNativeObjectMonitorField();
+        bbb.store(bbb.instanceFieldOf(handle, monitorField), ctxt.getLiteralFactory().literalOf((IntegerType)monitorField.getType(), 0L), MemoryAtomicityMode.NONE);
     }
 
 }
