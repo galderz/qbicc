@@ -6,10 +6,13 @@ import org.qbicc.context.ClassContext;
 import org.qbicc.context.CompilationContext;
 import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.BasicBlockBuilder;
+import org.qbicc.graph.BlockEntry;
+import org.qbicc.graph.BlockLabel;
 import org.qbicc.graph.MemoryAtomicityMode;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
+import org.qbicc.graph.OrderedNode;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.literal.IntegerLiteral;
@@ -62,13 +65,30 @@ public final class EscapeAnalysisOptimizeVisitor implements NodeVisitor.Delegati
     @Override
     public Value visit(Node.Copier param, New original) {
         final BasicBlockBuilder bbb = param.getBlockBuilder();
-        if (EscapeAnalysisState.get(ctxt).isNotEscapingMethod(original, bbb.getCurrentElement())) {
+        if (isStackAllocate(original, bbb)) {
             // Copy dependency so that stack allocation can be scheduled in the right place
             param.copyNode(original.getDependency());
             return stackAllocate(original, bbb);
         }
 
         return NodeVisitor.Delegating.super.visit(param, original);
+    }
+
+    private boolean isStackAllocate(New new_, BasicBlockBuilder bbb) {
+        return EscapeAnalysisState.get(ctxt).isNotEscapingMethod(new_, bbb.getCurrentElement())
+            && notInLoop(new_);
+    }
+
+    private boolean notInLoop(Node node) {
+        if (node instanceof OrderedNode on) {
+            final Node dependency = on.getDependency();
+            if (dependency instanceof BlockEntry be) {
+                return BlockLabel.getTargetOf(be.getPinnedBlockLabel()).getLoops().size() == 0;
+            }
+            return notInLoop(on.getDependency());
+        }
+
+        return false;
     }
 
     private Value stackAllocate(New new_, BasicBlockBuilder bbb) {
