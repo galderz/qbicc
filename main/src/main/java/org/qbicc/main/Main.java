@@ -158,6 +158,7 @@ public class Main implements Callable<DiagnosticContext> {
     private final boolean optPhis;
     private final boolean optGotos;
     private final boolean optInlining;
+    private final boolean optEscapeAnalysis;
     private final Platform platform;
     private final boolean smallTypeIds;
 
@@ -173,6 +174,7 @@ public class Main implements Callable<DiagnosticContext> {
         optInlining = builder.optInlining;
         optPhis = builder.optPhis;
         optGotos = builder.optGotos;
+        optEscapeAnalysis = builder.optEscapeAnalysis;
         platform = builder.platform;
         smallTypeIds = builder.smallTypeIds;
         ArrayList<ClassPathEntry> bootPaths = new ArrayList<>(builder.bootPathsPrepend.size() + 6 + builder.bootPathsAppend.size());
@@ -425,7 +427,9 @@ public class Main implements Callable<DiagnosticContext> {
                                 builder.addPreHook(Phase.ANALYZE, ReachabilityInfo::forceCoreClassesReachable);
                                 builder.addElementHandler(Phase.ANALYZE, new ElementBodyCopier());
                                 builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new DotGenerator(Phase.ANALYZE, graphGenConfig)));
-                                builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new ConnectionGraphDotGenerator("intra")));
+                                if (optEscapeAnalysis) {
+                                    builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new ConnectionGraphDotGenerator("intra")));
+                                }
                                 if (optGotos) {
                                     builder.addCopyFactory(Phase.ANALYZE, GotoRemovingVisitor::new);
                                 }
@@ -444,7 +448,9 @@ public class Main implements Callable<DiagnosticContext> {
                                 if (optInlining) {
                                     builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, InliningBasicBlockBuilder::new);
                                 }
-                                builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, EscapeAnalysisIntraMethodBuilder::new);
+                                if (optEscapeAnalysis) {
+                                    builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, EscapeAnalysisIntraMethodBuilder::new);
+                                }
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, ReachabilityBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, LocalVariableFindingBasicBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, StaticChecksBasicBlockBuilder::new);
@@ -452,13 +458,17 @@ public class Main implements Callable<DiagnosticContext> {
                                 builder.addPostHook(Phase.ANALYZE, ReachabilityInfo::reportStats);
                                 // todo: restore when adapted for run time initializers
                                 //builder.addPostHook(Phase.ANALYZE, new ClassInitializerRegister());
-                                builder.addPostHook(Phase.ANALYZE, new EscapeAnalysisInterMethodAnalysis());
-                                builder.addPostHook(Phase.ANALYZE, new ConnectionGraphDotGenerator("inter"));
+                                if (optEscapeAnalysis) {
+                                    builder.addPostHook(Phase.ANALYZE, new EscapeAnalysisInterMethodAnalysis());
+                                    builder.addPostHook(Phase.ANALYZE, new ConnectionGraphDotGenerator("inter"));
+                                }
                                 builder.addPostHook(Phase.ANALYZE, new DispatchTableBuilder());
                                 builder.addPostHook(Phase.ANALYZE, new SupersDisplayBuilder());
 
                                 builder.addPreHook(Phase.LOWER, new ClassObjectSerializer());
-                                builder.addCopyFactory(Phase.LOWER, EscapeAnalysisOptimizeVisitor::new);
+                                if (optEscapeAnalysis) {
+                                    builder.addCopyFactory(Phase.LOWER, EscapeAnalysisOptimizeVisitor::new);
+                                }
                                 builder.addElementHandler(Phase.LOWER, new FunctionLoweringElementHandler());
                                 builder.addElementHandler(Phase.LOWER, new NativeXtorLoweringElementHandler());
                                 builder.addElementHandler(Phase.LOWER, new ElementVisitorAdapter(new DotGenerator(Phase.LOWER, graphGenConfig)));
@@ -572,6 +582,7 @@ public class Main implements Callable<DiagnosticContext> {
             .setOptInlining(optionsProcessor.optArgs.optInlining)
             .setOptGotos(optionsProcessor.optArgs.optGotos)
             .setOptPhis(optionsProcessor.optArgs.optPhis)
+            .setOptEscapeAnalysis(optionsProcessor.optArgs.optEscapeAnalysis)
             .setSmallTypeIds(optionsProcessor.smallTypeIds)
             .setGraphGenConfig(optionsProcessor.graphGenConfig);
         Platform platform = optionsProcessor.platform;
@@ -716,6 +727,8 @@ public class Main implements Callable<DiagnosticContext> {
             boolean optPhis;
             @CommandLine.Option(names = "--no-opt-gotos", negatable = true, defaultValue = "true", description = "Enable/disable `goto` elimination")
             boolean optGotos;
+            @CommandLine.Option(names = "--no-escape-analysis", negatable = true, defaultValue = "true", description = "Enable/disable escape analysis")
+            boolean optEscapeAnalysis;
         }
 
         public CmdResult process(String[] args) {
@@ -799,6 +812,7 @@ public class Main implements Callable<DiagnosticContext> {
         private boolean optInlining = false;
         private boolean optPhis = true;
         private boolean optGotos = true;
+        private boolean optEscapeAnalysis = true;
         private GraphGenConfig graphGenConfig;
         private boolean smallTypeIds = false;
 
@@ -903,6 +917,11 @@ public class Main implements Callable<DiagnosticContext> {
 
         public Builder setOptGotos(boolean optGotos) {
             this.optGotos = optGotos;
+            return this;
+        }
+
+        public Builder setOptEscapeAnalysis(boolean optEscapeAnalysis) {
+            this.optEscapeAnalysis = optEscapeAnalysis;
             return this;
         }
 
