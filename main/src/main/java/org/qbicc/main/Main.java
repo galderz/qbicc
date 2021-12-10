@@ -427,7 +427,7 @@ public class Main implements Callable<DiagnosticContext> {
                                 builder.addPreHook(Phase.ANALYZE, ReachabilityInfo::forceCoreClassesReachable);
                                 builder.addElementHandler(Phase.ANALYZE, new ElementBodyCopier());
                                 builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new DotGenerator(Phase.ANALYZE, graphGenConfig)));
-                                if (optEscapeAnalysis) {
+                                if (optEscapeAnalysis && graphGenConfig.isEnabled()) {
                                     builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new ConnectionGraphDotGenerator("intra")));
                                 }
                                 if (optGotos) {
@@ -460,7 +460,9 @@ public class Main implements Callable<DiagnosticContext> {
                                 //builder.addPostHook(Phase.ANALYZE, new ClassInitializerRegister());
                                 if (optEscapeAnalysis) {
                                     builder.addPostHook(Phase.ANALYZE, new EscapeAnalysisInterMethodAnalysis());
-                                    builder.addPostHook(Phase.ANALYZE, new ConnectionGraphDotGenerator("inter"));
+                                    if (graphGenConfig.isEnabled()) {
+                                        builder.addPostHook(Phase.ANALYZE, new ConnectionGraphDotGenerator("inter"));
+                                    }
                                 }
                                 builder.addPostHook(Phase.ANALYZE, new DispatchTableBuilder());
                                 builder.addPostHook(Phase.ANALYZE, new SupersDisplayBuilder());
@@ -776,6 +778,7 @@ public class Main implements Callable<DiagnosticContext> {
             }
 
             if (graphGenArgs != null && graphGenArgs.genGraph) {
+                graphGenConfig.setEnabled(true);
                 if (graphGenArgs.methodsAndPhases == null) {
                     graphGenConfig.addMethodAndPhase(GraphGenConfig.ALL_METHODS, GraphGenConfig.ALL_PHASES);
                 } else {
