@@ -52,6 +52,14 @@ final class ConnectionGraph {
         setEscapeValue(new_, escapeValue);
     }
 
+    /**
+     * Track that a New instance is handled for a given node combination.
+     * This means its escape value will be pessimistically set.
+     */
+    void trackUnhandledNew(New new_) {
+        setEscapeValue(new_, EscapeValue.GLOBAL_ESCAPE);
+    }
+
     void trackParameters(List<ParameterValue> args) {
         parameters.addAll(args);
     }
