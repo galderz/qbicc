@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.qbicc.graph.Call;
 import org.qbicc.graph.CheckCast;
@@ -275,6 +276,31 @@ final class ConnectionGraph {
 
         // Separate computing from filtering since it modifies the collection itself
         possibleNewValues.forEach(value -> setEscapeValue(value, EscapeValue.ARG_ESCAPE));
+    }
+
+    /**
+     * Verify the escape state value of the given New nodes.
+     * If New nodes exist that are not amongst the verified ones,
+     * their escape state value must be pessimistically set to global escape.
+     *
+     * When data flow graphs are not fully handled,
+     * any New nodes found along the way must be pessimistically set their escape state value to global.
+     * This is done to avoid relying on escape state values that haven't been calculated precisely enough.
+     * When precision cannot be guaranteed, the escape estate value cannot be relied upon.
+     *
+     * This method assumes that only no escape, or argument escape, verified New nodes are passed in.
+     */
+    void verifyNewNodes(List<New> verifiedNewNodes) {
+        final List<Node> unverifiedNewNodes = this.escapeValues.entrySet().stream()
+            // Find all non-global escape nodes in the connection graph
+            .filter(e -> e.getKey() instanceof New && e.getValue().notGlobalEscape())
+            // Find those that are not verified
+            .filter(e -> !verifiedNewNodes.contains(e.getKey()))
+            .map(Map.Entry::getKey)
+            .toList();
+
+        // Unverified nodes get their escape state pessimistically set to global escape
+        unverifiedNewNodes.forEach(node -> setEscapeValue(node, EscapeValue.GLOBAL_ESCAPE));
     }
 
     private Map<Node, EscapeValue> mergeEscapeValues(ConnectionGraph other) {
