@@ -47,6 +47,8 @@ import org.qbicc.type.descriptor.MethodDescriptor;
 
 import static java.lang.Boolean.TRUE;
 
+// TODO Rename to EscapeAnalysisIntraMethodAnalysis
+// It's still a basic block builder because start method ParameterValue instances are required
 public final class EscapeAnalysisIntraMethodBuilder extends DelegatingBasicBlockBuilder  {
     private final EscapeAnalysisState escapeAnalysisState;
     private final ConnectionGraph connectionGraph;

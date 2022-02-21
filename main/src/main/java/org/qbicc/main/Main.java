@@ -112,6 +112,7 @@ import org.qbicc.plugin.opt.PhiOptimizerVisitor;
 import org.qbicc.plugin.opt.SimpleOptBasicBlockBuilder;
 import org.qbicc.plugin.opt.ea.EscapeAnalysisDotGenerator;
 import org.qbicc.plugin.opt.ea.EscapeAnalysisDotVisitor;
+import org.qbicc.plugin.opt.ea.EscapeAnalysisIntraMethodAnalysis;
 import org.qbicc.plugin.patcher.AccessorBasicBlockBuilder;
 import org.qbicc.plugin.patcher.AccessorTypeBuilder;
 import org.qbicc.plugin.patcher.Patcher;
@@ -457,7 +458,8 @@ public class Main implements Callable<DiagnosticContext> {
                                     builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, InliningBasicBlockBuilder::new);
                                 }
                                 if (optEscapeAnalysis) {
-                                    builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, EscapeAnalysisIntraMethodBuilder::new);
+                                    builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new EscapeAnalysisIntraMethodAnalysis()));
+                                    // builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.OPTIMIZE, EscapeAnalysisIntraMethodBuilder::new);
                                 }
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, ReachabilityBlockBuilder::new);
                                 builder.addBuilderFactory(Phase.ANALYZE, BuilderStage.INTEGRITY, LocalVariableFindingBasicBlockBuilder::new);
