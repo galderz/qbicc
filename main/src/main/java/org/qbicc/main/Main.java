@@ -434,9 +434,9 @@ public class Main implements Callable<DiagnosticContext> {
                                         ? new DotGenerator(Phase.ANALYZE, "analyze-intra", graphGenConfig).addVisitorFactory(EscapeAnalysisDotVisitor::new)
                                         : new DotGenerator(Phase.ANALYZE, graphGenConfig)
                                 ));
-                                if (optEscapeAnalysis && graphGenConfig.isEnabled()) {
-                                    builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new ConnectionGraphDotGenerator("intra")));
-                                }
+//                                if (optEscapeAnalysis && graphGenConfig.isEnabled()) {
+//                                    builder.addElementHandler(Phase.ANALYZE, new ElementVisitorAdapter(new ConnectionGraphDotGenerator("intra")));
+//                                }
                                 builder.addElementHandler(Phase.ANALYZE, elem -> ReachabilityInfo.processAutoQueuedElement(elem));
                                 if (optGotos) {
                                     builder.addCopyFactory(Phase.ANALYZE, GotoRemovingVisitor::new);
@@ -467,9 +467,9 @@ public class Main implements Callable<DiagnosticContext> {
                                 if (optEscapeAnalysis) {
                                     builder.addPostHook(Phase.ANALYZE, new EscapeAnalysisInterMethodAnalysis());
                                     builder.addPostHook(Phase.ANALYZE, new EscapeAnalysisDotGenerator(graphGenConfig));
-                                    if (graphGenConfig.isEnabled()) {
-                                        builder.addPostHook(Phase.ANALYZE, new ConnectionGraphDotGenerator("inter"));
-                                    }
+//                                    if (graphGenConfig.isEnabled()) {
+//                                        builder.addPostHook(Phase.ANALYZE, new ConnectionGraphDotGenerator("inter"));
+//                                    }
                                 }
                                 builder.addPostHook(Phase.ANALYZE, new DispatchTableBuilder());
                                 builder.addPostHook(Phase.ANALYZE, new SupersDisplayBuilder());

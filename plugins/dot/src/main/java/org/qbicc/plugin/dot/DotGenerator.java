@@ -157,6 +157,8 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
                 final Terminus terminus = new Terminus(visited);
                 final DotGenerationContext dctxt = new DotGenerationContext(ctxt, element, visited);
                 DotNodeVisitor visitor = new DotNodeVisitor(entryBlock, visited, decorators.apply(dctxt, terminus));
+                // DotNodeVisitor visitor = new DotNodeVisitor(entryBlock, visited, decorators.apply(dctxt, terminus));
+                dctxt.dotNodeVisitor = visitor;
                 visitor.process(bw);
                 bw.write("}");
             } catch (IOException e) {

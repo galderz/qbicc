@@ -3,10 +3,20 @@ package org.qbicc.plugin.opt.ea;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Collection;
+import java.util.Objects;
 
+import org.qbicc.graph.Action;
+import org.qbicc.graph.InstanceFieldOf;
 import org.qbicc.graph.New;
+import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
+import org.qbicc.graph.ReferenceHandle;
+import org.qbicc.graph.Terminator;
+import org.qbicc.graph.Value;
+import org.qbicc.graph.ValueHandle;
 import org.qbicc.plugin.dot.DotGenerationContext;
+import org.qbicc.plugin.dot.TooBigException;
 
 public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Appendable, String, String, String, String> {
     private final DotGenerationContext dtxt;
@@ -14,6 +24,7 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Ap
     private final ConnectionGraph connectionGraph;
     private boolean attr;
     private boolean commaNeeded;
+    private int counter = 500;
 
     public EscapeAnalysisDotVisitor(DotGenerationContext dtxt, NodeVisitor<Appendable, String, String, String, String> delegate) {
         this.dtxt = dtxt;
@@ -33,6 +44,29 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Ap
         attr(param, "style", "filled");
         attr(param, "fillcolor", nodeType(connectionGraph.getEscapeValue(node)).fillColor);
         nl(param);
+        final Collection<InstanceFieldOf> fields = connectionGraph.getFieldEdges(node);
+        for (InstanceFieldOf field : fields) {
+            addEdge(param, node, field, EdgeType.FIELD, "F");
+        }
+        return name;
+    }
+
+    @Override
+    public String visit(Appendable param, ReferenceHandle node) {
+        final String name = dtxt.visited.get(node);
+        final Node pointsTo = connectionGraph.getPointsToEdge(node);
+        if (Objects.nonNull(pointsTo)) {
+            addEdge(param, node, pointsTo, EdgeType.POINTS_TO, "P");
+        }
+        nl(param);
+        return name;
+    }
+
+    public String visit(Appendable param, Phantom node) {
+        String name = register(node);
+        appendTo(param, name);
+        attr(param, "label", "phantom");
+        nl(param);
         return name;
     }
 
@@ -43,6 +77,89 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Ap
             case NO_ESCAPE -> NodeType.NO_ESCAPE;
             case UNKNOWN -> NodeType.UNKNOWN;
         };
+    }
+
+    private void addEdge(Appendable param, Node from, Node to, EdgeType edge, String label) {
+        String fromName = getNodeName(param, from);
+        String toName = getNodeName(param, to);
+        appendTo(param, fromName);
+        appendTo(param, " -> ");
+        appendTo(param, toName);
+        attr(param, "label", label);
+        attr(param, "style", edge.style);
+        attr(param, "color", edge.color);
+        attr(param, "fontcolor", edge.color);
+        nl(param);
+    }
+
+    private String getNodeName(Appendable param, Node node) {
+        if (node instanceof Value) {
+            return getNodeName(param, (Value) node);
+        } else if (node instanceof ValueHandle) {
+            return getNodeName(param, (ValueHandle)node);
+        } else if (node instanceof Action) {
+            return getNodeName(param, (Action) node);
+        } else if (node instanceof Terminator){
+            return getNodeName(param, (Terminator) node);
+        } else {
+            assert node instanceof Phantom;
+            return visit(param, (Phantom) node);
+        }
+    }
+
+    private String nextName() {
+        int id = counter++;
+        if (id > 1000) {
+            throw new TooBigException();
+        }
+        return "n" + id;
+    }
+
+    // TODO copied from DotNodeVisitor
+    private String register(final Node node) {
+        String name = nextName();
+        dtxt.visited.put(node, name);
+        return name;
+    }
+
+    // TODO copied from DotNodeVisitor
+    private String getNodeName(Appendable param, Action node) {
+        String name = dtxt.visited.get(node);
+        if (name == null) {
+            name = node.accept(dtxt.dotNodeVisitor, param);
+            //name = node.accept(this, param);
+        }
+        return name;
+    }
+
+    // TODO copied from DotNodeVisitor
+    private String getNodeName(Appendable param, Value node) {
+        String name = dtxt.visited.get(node);
+        if (name == null) {
+            name = node.accept(dtxt.dotNodeVisitor, param);
+            //name = node.accept(this, param);
+        }
+        return name;
+    }
+
+    // TODO copied from DotNodeVisitor
+    private String getNodeName(Appendable param, ValueHandle node) {
+        String name = dtxt.visited.get(node);
+        if (name == null) {
+            name = node.accept(dtxt.dotNodeVisitor, param);
+            //name = node.accept(this, param);
+        }
+        return name;
+    }
+
+    // TODO copied from DotNodeVisitor
+    private String getNodeName(Appendable param, Terminator node) {
+        String name = dtxt.visited.get(node);
+        if (name == null) {
+            name = node.accept(dtxt.dotNodeVisitor, param);
+            //name = node.accept(this, param);
+        }
+        return name;
     }
 
     // TODO copied from DotNodeVisitor
@@ -84,8 +201,8 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Ap
         }
         appendTo(output, '"');
     }
-    // TODO copied from DotNodeVisitor
 
+    // TODO copied from DotNodeVisitor
     private void nl(final Appendable param) {
         if (attr) {
             appendTo(param, ']');
@@ -94,8 +211,8 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Ap
         }
         appendTo(param, System.lineSeparator());
     }
-    // TODO copied from DotNodeVisitor
 
+    // TODO copied from DotNodeVisitor
     static void appendTo(Appendable param, Object obj) {
         try {
             param.append(obj.toString());
@@ -114,6 +231,22 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Ap
 
         NodeType(String fillColor) {
             this.fillColor = fillColor;
+        }
+    }
+
+    private enum EdgeType {
+        DEFERRED("gray", "dashed"),
+        POINTS_TO("gray", "solid"),
+        FIELD("gray", "solid");
+
+        final String color;
+        final String style;
+        final char label;
+
+        EdgeType(String color, String style) {
+            this.color = color;
+            this.style = style;
+            this.label = this.toString().charAt(0);
         }
     }
 }

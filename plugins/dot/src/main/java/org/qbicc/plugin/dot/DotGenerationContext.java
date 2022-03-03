@@ -10,6 +10,7 @@ public class DotGenerationContext {
     public final CompilationContext ctxt;
     public final ExecutableElement element;
     public final Map<Node, String> visited;
+    public DotNodeVisitor dotNodeVisitor;
 
     public DotGenerationContext(CompilationContext ctxt, ExecutableElement element, Map<Node, String> visited) {
         this.ctxt = ctxt;
