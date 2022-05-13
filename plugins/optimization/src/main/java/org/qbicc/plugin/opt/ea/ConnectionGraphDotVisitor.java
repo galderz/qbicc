@@ -892,7 +892,7 @@ public class ConnectionGraphDotVisitor implements NodeVisitor<Appendable, String
         attr(param, "fillcolor", String.valueOf(nodeType(connectionGraph.getEscapeValue(node)).fillColor));
         nl(param);
 
-        final ValueHandle deferred = connectionGraph.getDeferred(node);
+        final Node deferred = connectionGraph.getDeferredEdge(node);
         if (deferred != null) {
             String deferredName = getNodeName(param, deferred);
             addEdge(param, name, deferredName, EdgeType.DEFERRED);

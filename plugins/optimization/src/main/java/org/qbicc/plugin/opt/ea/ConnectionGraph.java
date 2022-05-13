@@ -32,7 +32,7 @@ final class ConnectionGraph {
     /**
      * Points-to are edges from references to objects referenced.
      * The references are {@link ValueHandle} instances, e.g. {@link ReferenceHandle}, {@link StaticField}...etc.
-     * Referenced objects are normally {@link New} instances, but they can also be {@link ParameterValue} or {@link Call}.
+     * Referenced objects are normally {@link New} instances, but they can also be {@link ParameterValue}, {@link Call} or phantom nodes.
      * <p>
      * Each method's connection graph tracks this during intra method analysis:
      * <p><ul>
@@ -59,7 +59,7 @@ final class ConnectionGraph {
      * They're mostly used to link {@link ParameterValue} instances with their uses.
      * During inter method analysis these are bypassed recursively to establish points to edges.
      */
-    private final Map<Node, ValueHandle> deferredEdges = new HashMap<>(); // dashed (D) edges
+    private final Map<Node, Node> deferredEdges = new HashMap<>(); // dashed (D) edges
     private final Map<Node, Collection<InstanceFieldOf>> fieldEdges = new HashMap<>(); // solid (F) edges
 
     /**
@@ -85,6 +85,35 @@ final class ConnectionGraph {
         return "ConnectionGraph{" +
             "name='" + name + '\'' +
             '}';
+    }
+
+    void addPointsToEdge(Node from, Node to) {
+        addPointsToEdgeIfAbsent(from, to);
+    }
+
+    Node getPointsToEdge(Node from) {
+        return pointsToEdges.get(from);
+    }
+
+    void addFieldEdge(Node node, InstanceFieldOf instanceField) {
+        addFieldEdgeIfAbsent(node, instanceField);
+    }
+
+    Collection<InstanceFieldOf> getFieldEdges(Node node) {
+        final Collection<InstanceFieldOf> fieldEdges = this.fieldEdges.get(node);
+        return fieldEdges == null ? Collections.emptyList() : fieldEdges;
+    }
+
+    void addDeferredEdge(Node node, Node value) {
+        addDeferredEdgeIfAbsent(node, value);
+    }
+
+    void setArgEscape(Node node) {
+        setEscapeValue(node, EscapeValue.ARG_ESCAPE);
+    }
+
+    void setGlobalEscape(Node node) {
+        setEscapeValue(node, EscapeValue.GLOBAL_ESCAPE);
     }
 
     void trackLocalNew(LocalVariable localHandle, New new_) {
@@ -160,7 +189,7 @@ final class ConnectionGraph {
          return Objects.isNull(fields) ? Collections.emptyList() : fields;
     }
 
-    ValueHandle getDeferred(Node node) {
+    Node getDeferredEdge(Node node) {
         return deferredEdges.get(node);
     }
 
@@ -220,18 +249,18 @@ final class ConnectionGraph {
         propagateArgEscapeOnly();
     }
 
-    private void bypassAllDeferredEdges(Map<Node, ValueHandle> oldDeferredEdges) {
+    private void bypassAllDeferredEdges(Map<Node, Node> oldDeferredEdges) {
         if (oldDeferredEdges.isEmpty()) {
             deferredEdges.clear();
             return;
         }
 
-        Map<Node, ValueHandle> newDeferredEdges = new HashMap<>();
-        for (ValueHandle node : oldDeferredEdges.values()) {
-            final ValueHandle defersTo = oldDeferredEdges.get(node);
+        Map<Node, Node> newDeferredEdges = new HashMap<>();
+        for (Node node : oldDeferredEdges.values()) {
+            final Node defersTo = oldDeferredEdges.get(node);
             final Node pointsTo = pointsToEdges.get(node);
             if (defersTo != null || pointsTo != null) {
-                for (Map.Entry<Node, ValueHandle> incoming : oldDeferredEdges.entrySet()) {
+                for (Map.Entry<Node, Node> incoming : oldDeferredEdges.entrySet()) {
                     if (incoming.getValue().equals(node)) {
                         if (defersTo != null) {
                             newDeferredEdges.put(incoming.getKey(), defersTo);
@@ -370,7 +399,7 @@ final class ConnectionGraph {
         return result;
     }
 
-    private boolean addFieldEdgeIfAbsent(New from, InstanceFieldOf to) {
+    private boolean addFieldEdgeIfAbsent(Node from, InstanceFieldOf to) {
         return fieldEdges
             .computeIfAbsent(from, obj -> new ArrayList<>())
             .add(to);
@@ -380,7 +409,7 @@ final class ConnectionGraph {
         return pointsToEdges.putIfAbsent(from, to) == null;
     }
 
-    private boolean addDeferredEdgeIfAbsent(Node from, ValueHandle to) {
+    private boolean addDeferredEdgeIfAbsent(Node from, Node to) {
         return deferredEdges.putIfAbsent(from, to) == null;
     }
 
