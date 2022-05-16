@@ -311,6 +311,7 @@ final class ConnectionGraph {
     }
 
     void propagateArgEscapeOnly() {
+        // TODO this can now start from ParameterValue instances
         final List<Node> argEscapeOnly = escapeValues.entrySet().stream()
             .filter(e -> e.getValue().isArgEscape())
             .map(Map.Entry::getKey)
@@ -324,9 +325,20 @@ final class ConnectionGraph {
         final Node to = pointsToEdges.get(from);
 
         if (to != null && getEscapeValue(to).notGlobalEscape()) {
-            setEscapeValue(to, EscapeValue.ARG_ESCAPE);
-            computeArgEscapeOnly(to);
+            switchToArgEscape(to);
         }
+
+        final Collection<InstanceFieldOf> fields = fieldEdges.get(from);
+        if (fields != null) {
+            fields.stream()
+                .filter(field -> getEscapeValue(field).notGlobalEscape())
+                .forEach(this::switchToArgEscape);
+        }
+    }
+
+    private void switchToArgEscape(Node to) {
+        setEscapeValue(to, EscapeValue.ARG_ESCAPE);
+        computeArgEscapeOnly(to);
     }
 
     /**

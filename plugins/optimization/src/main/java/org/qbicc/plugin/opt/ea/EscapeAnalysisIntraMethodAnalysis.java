@@ -87,12 +87,6 @@ public class EscapeAnalysisIntraMethodAnalysis extends DelegatingBasicBlockBuild
 
         @Override
         public Void visit(AnalysisContext param, ReferenceHandle ref) {
-            final Value refValue = ref.getReferenceValue();
-            if (refValue instanceof New new_) {
-                // (1) p = new T();
-                // Add points-to from `p` to new object
-                param.connectionGraph.addPointsToEdge(ref, new_);
-            }
             return visitSupported(param, ref);
         }
 
@@ -136,8 +130,8 @@ public class EscapeAnalysisIntraMethodAnalysis extends DelegatingBasicBlockBuild
                             param.connectionGraph.addPointsToEdge(anchor, phantom);
 
                             // Set link from object in caller's context, via field, to the new value
-                            param.connectionGraph.addPointsToEdge(phantom, ref);
-                            param.connectionGraph.addPointsToEdge(ref, value);
+                            param.connectionGraph.addFieldEdge(phantom, fieldOf);
+                            param.connectionGraph.addPointsToEdge(fieldOf, value);
                         }
                     }
                 }

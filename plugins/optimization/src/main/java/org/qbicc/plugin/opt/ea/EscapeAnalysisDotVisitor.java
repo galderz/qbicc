@@ -54,13 +54,10 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Do
         return param.getName(node);
     }
 
-//    @Override
-//    public String visit(DotContext param, InstanceFieldOf node) {
-//        final ConnectionGraph connectionGraph = getConnectionGraph(param);
-//        addDeferredEdge(param, node, connectionGraph);
-//        addPointsToEdge(param, node, connectionGraph);
-//        return param.getName(node);
-//    }
+    @Override
+    public String visit(DotContext param, InstanceFieldOf node) {
+        return decorateVisited(param, node);
+    }
 
     private String visit(DotContext param, Phantom node) {
         ConnectionGraph connectionGraph = getConnectionGraph(param);
@@ -73,11 +70,6 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Do
         addDeferredEdge(param, node, connectionGraph);
         addFieldEdges(param, node, connectionGraph);
         addPointsToEdge(param, node, connectionGraph);
-//        final Node pointsTo = connectionGraph.getPointsToEdge(node);
-//        if (Objects.nonNull(pointsTo)) {
-//            String toName = visit(param, pointsTo);
-//            addEdge(param, name, toName, EdgeType.POINTS_TO, "P");
-//        }
         return name;
     }
 
