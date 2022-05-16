@@ -51,7 +51,7 @@ final class ConnectionGraph {
      * </li>
      * </ul><p>
      */
-    private final Map<Node, Node> pointsToEdges = new HashMap<>(); // solid (P) edges
+    private final Map<Node, Collection<Node>> pointsToEdges = new HashMap<>(); // solid (P) edges
 
     /**
      * A deferred edge from a node {@code p} to a node {@code q} means that {@code p} points to whatever {@code q} points to.
@@ -91,8 +91,9 @@ final class ConnectionGraph {
         addPointsToEdgeIfAbsent(from, to);
     }
 
-    Node getPointsToEdge(Node from) {
-        return pointsToEdges.get(from);
+    Collection<Node> getPointsToEdges(Node from) {
+        final Collection<Node> edges = pointsToEdges.get(from);
+        return edges == null ? Collections.emptyList() : edges;
     }
 
     void addFieldEdge(Node node, InstanceFieldOf instanceField) {
@@ -258,15 +259,15 @@ final class ConnectionGraph {
         Map<Node, Node> newDeferredEdges = new HashMap<>();
         for (Node node : oldDeferredEdges.values()) {
             final Node defersTo = oldDeferredEdges.get(node);
-            final Node pointsTo = pointsToEdges.get(node);
-            if (defersTo != null || pointsTo != null) {
+            final Collection<Node> pointsTo = getPointsToEdges(node);
+            if (defersTo != null || !pointsTo.isEmpty()) {
                 for (Map.Entry<Node, Node> incoming : oldDeferredEdges.entrySet()) {
                     if (incoming.getValue().equals(node)) {
                         if (defersTo != null) {
                             newDeferredEdges.put(incoming.getKey(), defersTo);
                         }
-                        if (pointsTo != null) {
-                            addPointsToEdgeIfAbsent(incoming.getKey(), pointsTo);
+                        for (Node pointsToNode : pointsTo) {
+                            addPointsToEdgeIfAbsent(incoming.getKey(), pointsToNode);
                         }
                     }
                 }
@@ -302,16 +303,15 @@ final class ConnectionGraph {
     }
 
     private void computeGlobalEscape(Node from) {
-        final Node to = pointsToEdges.get(from);
+        final Collection<Node> to = getPointsToEdges(from);
 
-        if (to != null) {
-            setEscapeValue(to, EscapeValue.GLOBAL_ESCAPE);
-            computeGlobalEscape(to);
+        for (Node node : to) {
+            setEscapeValue(node, EscapeValue.GLOBAL_ESCAPE);
+            computeGlobalEscape(node);
         }
     }
 
     void propagateArgEscapeOnly() {
-        // TODO this can now start from ParameterValue instances
         final List<Node> argEscapeOnly = escapeValues.entrySet().stream()
             .filter(e -> e.getValue().isArgEscape())
             .map(Map.Entry::getKey)
@@ -322,18 +322,13 @@ final class ConnectionGraph {
     }
 
     private void computeArgEscapeOnly(Node from) {
-        final Node to = pointsToEdges.get(from);
+        getPointsToEdges(from).stream()
+            .filter(node -> getEscapeValue(node).isMoreThanArgEscape())
+            .forEach(this::switchToArgEscape);
 
-        if (to != null && getEscapeValue(to).notGlobalEscape()) {
-            switchToArgEscape(to);
-        }
-
-        final Collection<InstanceFieldOf> fields = fieldEdges.get(from);
-        if (fields != null) {
-            fields.stream()
-                .filter(field -> getEscapeValue(field).notGlobalEscape())
-                .forEach(this::switchToArgEscape);
-        }
+        getFieldEdges(from).stream()
+            .filter(field -> getEscapeValue(field).isMoreThanArgEscape())
+            .forEach(this::switchToArgEscape);
     }
 
     private void switchToArgEscape(Node to) {
@@ -346,10 +341,18 @@ final class ConnectionGraph {
      * If includeSelf is true, the set also includes p, otherwise it won't be present.
      */
     Collection<Node> getPointsTo(Node node, boolean includeSef) {
-        final Node pointsTo = pointsToEdges.get(node);
-        return pointsTo != null
-            ? includeSef ? List.of(node, pointsTo) : List.of(pointsTo)
-            : includeSef ? List.of(node) : List.of();
+        final Collection<Node> pointsTo = getPointsToEdges(node);
+        if (includeSef) {
+            if (pointsTo.isEmpty()) {
+                return List.of(node);
+            }
+
+            final ArrayList<Node> nodes = new ArrayList<>(pointsTo);
+            nodes.add(node);
+            return nodes;
+        }
+
+        return pointsTo;
     }
 
     ConnectionGraph union(ConnectionGraph other) {
@@ -418,7 +421,9 @@ final class ConnectionGraph {
     }
 
     private boolean addPointsToEdgeIfAbsent(Node from, Node to) {
-        return pointsToEdges.putIfAbsent(from, to) == null;
+        return pointsToEdges
+            .computeIfAbsent(from, obj -> new ArrayList<>())
+            .add(to);
     }
 
     private boolean addDeferredEdgeIfAbsent(Node from, Node to) {

@@ -7,9 +7,8 @@ import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
 import org.qbicc.graph.ParameterValue;
-import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.StaticField;
-import org.qbicc.graph.ValueHandleVisitor;
+import org.qbicc.graph.ValueReturn;
 import org.qbicc.plugin.dot.DotContext;
 
 import java.util.Collection;
@@ -35,11 +34,6 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Do
     }
 
     @Override
-    public String visit(DotContext param, ReferenceHandle node) {
-        return decorateVisited(param, node);
-    }
-
-    @Override
     public String visit(DotContext param, StaticField node) {
         final ConnectionGraph connectionGraph = getConnectionGraph(param);
         addPointsToEdge(param, node, connectionGraph);
@@ -57,6 +51,13 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Do
     @Override
     public String visit(DotContext param, InstanceFieldOf node) {
         return decorateVisited(param, node);
+    }
+
+    @Override
+    public String visit(DotContext param, ValueReturn node) {
+        final ConnectionGraph connectionGraph = getConnectionGraph(param);
+        addDeferredEdge(param, node, connectionGraph);
+        return param.getName(node);
     }
 
     private String visit(DotContext param, Phantom node) {
@@ -87,9 +88,9 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Do
     }
 
     private void addPointsToEdge(DotContext param, Node node, ConnectionGraph connectionGraph) {
-        final Node pointsTo = connectionGraph.getPointsToEdge(node);
-        if (Objects.nonNull(pointsTo)) {
-            addEdge(param, node, pointsTo, EdgeType.POINTS_TO, "P");
+        final Collection<Node> pointsTo = connectionGraph.getPointsToEdges(node);
+        for (Node pointsToNode : pointsTo) {
+            addEdge(param, node, pointsToNode, EdgeType.POINTS_TO, "P");
         }
     }
 
@@ -154,7 +155,7 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Do
         GLOBAL_ESCAPE("lightsalmon"),
         ARG_ESCAPE("lightcyan3"),
         NO_ESCAPE("lightblue1"),
-        UNKNOWN("lightpink1");
+        UNKNOWN("lightpink1"); // TODO switch to wait, or don't fill
 
         final String fillColor;
 

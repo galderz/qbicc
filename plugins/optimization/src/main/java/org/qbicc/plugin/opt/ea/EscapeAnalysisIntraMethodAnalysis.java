@@ -10,6 +10,7 @@ import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.DelegatingBasicBlockBuilder;
 import org.qbicc.graph.If;
 import org.qbicc.graph.InstanceFieldOf;
+import org.qbicc.graph.Invoke;
 import org.qbicc.graph.IsEq;
 import org.qbicc.graph.Load;
 import org.qbicc.graph.New;
@@ -27,7 +28,11 @@ import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.ValueReturn;
 import org.qbicc.graph.literal.Literal;
+import org.qbicc.type.BooleanType;
 import org.qbicc.type.ClassObjectType;
+import org.qbicc.type.NumericType;
+import org.qbicc.type.ValueType;
+import org.qbicc.type.VoidType;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -118,7 +123,7 @@ public class EscapeAnalysisIntraMethodAnalysis extends DelegatingBasicBlockBuild
                         param.connectionGraph.setArgEscape(value);
                     } else {
                         // p.f = new T();
-                        if (Objects.isNull(param.connectionGraph.getPointsToEdge(ref)) && ref.getReferenceValue() instanceof ParameterValue pv) {
+                        if (ref.getReferenceValue() instanceof ParameterValue pv) {
                             // Object that `p` points to was created outside this method (e.g. `p` is a formal parameter)
 
                             // Create a phantom node that represents the object that the parameter value points to in a caller's context,
@@ -211,11 +216,35 @@ public class EscapeAnalysisIntraMethodAnalysis extends DelegatingBasicBlockBuild
 
         @Override
         public Void visit(AnalysisContext param, ValueReturn node) {
-            if (node.getReturnValue() instanceof New new_) {
-                param.connectionGraph.setArgEscape(new_);
+            final Value value = node.getReturnValue();
+            if (value instanceof New new_) {
+                final Phantom phantom = new Phantom("return");
+                param.connectionGraph.setArgEscape(phantom);
+                param.connectionGraph.addDeferredEdge(node, phantom);
+                param.connectionGraph.addPointsToEdge(phantom, new_);
+            } else if (value instanceof Call call && !isPrimitive(call.getType())) {
+                final Phantom phantom = new Phantom("return");
+                param.connectionGraph.setArgEscape(phantom);
+                param.connectionGraph.addDeferredEdge(node, phantom);
+                for (Value argument : call.getArguments()) {
+                    param.connectionGraph.addPointsToEdge(phantom, argument);
+                }
+            } else if (value instanceof Invoke.ReturnValue ret && !isPrimitive(ret.getType())) {
+                final Phantom phantom = new Phantom("return");
+                param.connectionGraph.setArgEscape(phantom);
+                param.connectionGraph.addDeferredEdge(node, phantom);
+                for (Value argument : ret.getInvoke().getArguments()) {
+                    param.connectionGraph.addPointsToEdge(phantom, argument);
+                }
             }
 
             return visitSupported(param, node);
+        }
+
+        private static boolean isPrimitive(ValueType type) {
+            return type instanceof VoidType
+                || type instanceof BooleanType
+                || type instanceof NumericType;
         }
 
         @Override
