@@ -395,7 +395,7 @@ public class EscapeAnalysisIntraMethodAnalysis implements ElementVisitor<Compila
         }
 
         boolean visitKnown(AnalysisContext param, Node node) {
-            param.addType(node.getClass());
+            param.addKnownType(node.getClass());
             return visitUnknown(param, node);
         }
 
@@ -463,7 +463,7 @@ public class EscapeAnalysisIntraMethodAnalysis implements ElementVisitor<Compila
 
             final Boolean prev = param.supported.get(node);
             if (prev == null) {
-                boolean supported = param.types.contains(node.getClass());
+                boolean supported = param.knownTypes.contains(node.getClass());
                 param.setSupported(node, supported);
                 return supported;
             }
@@ -481,7 +481,7 @@ public class EscapeAnalysisIntraMethodAnalysis implements ElementVisitor<Compila
         final Set<Node> visited = new HashSet<>();
         final Map<Node, Boolean> supported = new HashMap<>();
         // TODO rename to knownTypes
-        final Set<Class<?>> types = new HashSet<>(); // supported types
+        final Set<Class<?>> knownTypes = new HashSet<>(); // known supported types
         final EscapeAnalysisState escapeAnalysisState;
         final ConnectionGraph connectionGraph;
         final ClassContext bootstrapClassContext;
@@ -490,13 +490,12 @@ public class EscapeAnalysisIntraMethodAnalysis implements ElementVisitor<Compila
             this.escapeAnalysisState = escapeAnalysisState;
             this.connectionGraph = connectionGraph;
             this.bootstrapClassContext = bootstrapClassContext;
-            this.types.add(BlockEntry.class);
-            this.types.add(ParameterValue.class);
+            this.knownTypes.add(BlockEntry.class);
+            this.knownTypes.add(ParameterValue.class);
         }
 
-        // TODO rename to addKnownType
-        void addType(Class<?> type) {
-            types.add(type);
+        void addKnownType(Class<?> type) {
+            knownTypes.add(type);
         }
 
         void setSupported(Node node, boolean value) {

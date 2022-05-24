@@ -40,9 +40,9 @@ public class EscapeValueTest {
 
     @Test
     public void testIsMoreThanGlobalEscape() {
-        assertTrue(UNKNOWN.isMoreThanGlobalEscape());
-        assertTrue(NO_ESCAPE.isMoreThanGlobalEscape());
-        assertTrue(ARG_ESCAPE.isMoreThanGlobalEscape());
-        assertFalse(GLOBAL_ESCAPE.isMoreThanGlobalEscape());
+        assertTrue(UNKNOWN.notGlobalEscape());
+        assertTrue(NO_ESCAPE.notGlobalEscape());
+        assertTrue(ARG_ESCAPE.notGlobalEscape());
+        assertFalse(GLOBAL_ESCAPE.notGlobalEscape());
     }
 }

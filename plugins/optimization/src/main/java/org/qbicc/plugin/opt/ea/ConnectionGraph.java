@@ -259,12 +259,12 @@ final class ConnectionGraph {
     private void computeGlobalEscape(Node from) {
         final Node pointsTo = getPointsToEdge(from);
 
-        if (Objects.nonNull(pointsTo) && getEscapeValue(pointsTo).isMoreThanGlobalEscape()) {
+        if (Objects.nonNull(pointsTo) && getEscapeValue(pointsTo).notGlobalEscape()) {
             switchToGlobalEscape(pointsTo);
         }
 
         getFieldEdges(from).stream()
-            .filter(field -> getEscapeValue(field).isMoreThanGlobalEscape())
+            .filter(field -> getEscapeValue(field).notGlobalEscape())
             .forEach(this::switchToGlobalEscape);
     }
 

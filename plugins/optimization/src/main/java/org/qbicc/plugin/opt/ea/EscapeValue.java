@@ -31,12 +31,6 @@ enum EscapeValue {
         return isMoreThan(ARG_ESCAPE);
     }
 
-    // TODO not global escape should be enough?
-    @Deprecated
-    boolean isMoreThanGlobalEscape() {
-        return isMoreThan(GLOBAL_ESCAPE);
-    }
-
     static EscapeValue of(EscapeValue escapeValue) {
         return Objects.isNull(escapeValue) ? EscapeValue.UNKNOWN : escapeValue;
     }
