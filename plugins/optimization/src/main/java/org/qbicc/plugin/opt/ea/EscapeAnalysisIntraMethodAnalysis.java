@@ -90,8 +90,7 @@ public class EscapeAnalysisIntraMethodAnalysis implements ElementVisitor<Compila
         @Override
         public Void visit(AnalysisContext param, New node) {
             if (visitKnown(param, node)) {
-                // TODO remove trackNew...
-                param.connectionGraph.trackNew(node, defaultEscapeValue(param, node.getClassObjectType()));
+                param.connectionGraph.setNewEscapeValue(node, defaultEscapeValue(param, node.getClassObjectType()));
             }
 
             return null;

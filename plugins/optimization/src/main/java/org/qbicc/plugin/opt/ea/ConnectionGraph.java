@@ -10,9 +10,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.qbicc.graph.Call;
-import org.qbicc.graph.CastValue;
 import org.qbicc.graph.InstanceFieldOf;
-import org.qbicc.graph.Load;
 import org.qbicc.graph.LocalVariable;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
@@ -106,10 +104,6 @@ final class ConnectionGraph {
         return fieldEdges == null ? Collections.emptyList() : fieldEdges;
     }
 
-    void addDeferredEdge(Node node, Node value) {
-        addDeferredEdgeIfAbsent(node, value);
-    }
-
     void setNoEscape(Node node) {
         setEscapeValue(node, EscapeValue.NO_ESCAPE);
     }
@@ -122,64 +116,12 @@ final class ConnectionGraph {
         setEscapeValue(node, EscapeValue.GLOBAL_ESCAPE);
     }
 
-    public boolean addParameter(ParameterValue param) {
-        return parameters.addIfAbsent(param);
-    }
-
-    void trackLocalNew(LocalVariable localHandle, New new_) {
-        localNewNodes.put(localHandle, new_);
-    }
-
-    void trackNew(New new_, EscapeValue escapeValue) {
+    void setNewEscapeValue(New new_, EscapeValue escapeValue) {
         setEscapeValue(new_, escapeValue);
     }
 
-    void trackParameters(List<ParameterValue> args) {
-        // parameters.addAll(args);
-    }
-
-    void trackReturn(Value value) {
-        if (value instanceof Load) {
-            final Value localNew = localNewNodes.get(value.getValueHandle());
-            if (localNew != null) {
-                setEscapeValue(localNew, EscapeValue.ARG_ESCAPE);
-                return;
-            }
-        }
-
-        setEscapeValue(value, EscapeValue.ARG_ESCAPE);
-    }
-
-    void trackStoreStaticField(ValueHandle handle, Value value) {
-        addPointsToEdgeIfAbsent(handle, value);
-        setEscapeValue(handle, EscapeValue.GLOBAL_ESCAPE);
-    }
-
-    void trackStoreThisField(Value value) {
-        setEscapeValue(value, EscapeValue.ARG_ESCAPE);
-    }
-
-    void trackThrowNew(New value) {
-        // New allocations thrown assumed to escape as arguments
-        // TODO Could it be possible to only mark as argument escaping those that escape the method?
-        setEscapeValue(value, EscapeValue.ARG_ESCAPE);
-    }
-
-    void trackCast(CastValue cast) {
-        addPointsToEdgeIfAbsent(cast, cast.getInput());
-    }
-
-    void fixEdgesField(New new_, ValueHandle newHandle, InstanceFieldOf instanceField) {
-        addFieldEdgeIfAbsent(new_, instanceField);
-        addPointsToEdgeIfAbsent(newHandle, new_);
-    }
-
-    void fixEdgesNew(ValueHandle newHandle, New new_) {
-        addPointsToEdgeIfAbsent(newHandle, new_);
-    }
-
-    void fixEdgesParameterValue(ParameterValue from, InstanceFieldOf to) {
-        addDeferredEdgeIfAbsent(from, to);
+    boolean addParameter(ParameterValue param) {
+        return parameters.addIfAbsent(param);
     }
 
     /**
@@ -202,12 +144,6 @@ final class ConnectionGraph {
     Node getDeferredEdge(Node node) {
         return deferredEdges.get(node);
     }
-
-//    void updateAtMethodEntry() {
-//        // Set all parameters as arg escape
-//        // TODO is this needed?
-//        parameters.forEach(arg -> setEscapeValue(arg, EscapeValue.ARG_ESCAPE));
-//    }
 
     void updateAfterInvokingMethod(Call callee, ConnectionGraph calleeCG) {
         // TODO this should really be removed, no method called that is not reachable should make it here
@@ -430,10 +366,6 @@ final class ConnectionGraph {
 
     private boolean addPointsToEdgeIfAbsent(Node from, Node to) {
         return pointsToEdges.putIfAbsent(from, to) == null;
-    }
-
-    private boolean addDeferredEdgeIfAbsent(Node from, Node to) {
-        return deferredEdges.putIfAbsent(from, to) == null;
     }
 
     private boolean setEscapeValue(Node node, EscapeValue escapeValue) {
