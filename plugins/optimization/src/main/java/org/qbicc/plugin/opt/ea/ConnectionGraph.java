@@ -11,7 +11,6 @@ import java.util.stream.Collectors;
 
 import org.qbicc.graph.Call;
 import org.qbicc.graph.InstanceFieldOf;
-import org.qbicc.graph.LocalVariable;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.ParameterValue;
@@ -54,6 +53,10 @@ final class ConnectionGraph {
      */
     private final Map<Node, Value> pointsToEdges = new HashMap<>(); // solid (P) edges
 
+    /**
+     * Track fields associated with incoming parameter values.
+     * This is necessary to propagate escape value information from fields within a method to the caller.
+     */
     private final Map<Node, Collection<InstanceFieldOf>> fieldEdges = new HashMap<>(); // solid (F) edges
 
     /**
@@ -64,10 +67,13 @@ final class ConnectionGraph {
     private final Map<Node, EscapeValue> escapeValues = new HashMap<>();
 
     /**
-     * This helps overcome the lack of direct link between {@link LocalVariable} and {@link New} nodes in the graph.
+     * Track parameters for the method call.
      */
-    private final Map<ValueHandle, New> localNewNodes = new HashMap<>();
     private final ParameterArray parameters;
+
+    /**
+     * Method for which this connection graph belongs.
+     */
     final ExecutableElement element;
 
     ConnectionGraph(ExecutableElement element) {
@@ -90,7 +96,7 @@ final class ConnectionGraph {
         return pointsToEdges.get(from);
     }
 
-    void addFieldEdge(Node node, InstanceFieldOf instanceField) {
+    void addFieldEdge(ParameterValue node, InstanceFieldOf instanceField) {
         addFieldEdgeIfAbsent(node, instanceField);
     }
 
@@ -269,7 +275,6 @@ final class ConnectionGraph {
             this.escapeValues.clear();
             this.escapeValues.putAll(mergedEscapeValues);
 
-            this.localNewNodes.putAll(other.localNewNodes);
             this.parameters.addAll(other.parameters);
         }
 
@@ -318,7 +323,7 @@ final class ConnectionGraph {
         return result;
     }
 
-    private boolean addFieldEdgeIfAbsent(Node from, InstanceFieldOf to) {
+    private boolean addFieldEdgeIfAbsent(ParameterValue from, InstanceFieldOf to) {
         return fieldEdges
             .computeIfAbsent(from, obj -> new ArrayList<>())
             .add(to);
