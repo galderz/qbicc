@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.qbicc.graph.Call;
+import org.qbicc.graph.Executable;
 import org.qbicc.graph.InstanceFieldOf;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
@@ -71,20 +72,17 @@ final class ConnectionGraph {
      */
     private final ParameterArray parameters;
 
-    /**
-     * Method for which this connection graph belongs.
-     */
-    final ExecutableElement element;
+    private final String name;
 
     ConnectionGraph(ExecutableElement element) {
-        this.element = element;
+        this.name = element.toString();
         this.parameters = new ParameterArray(element.getSignature().getParameterTypes().size());
     }
 
     @Override
     public String toString() {
         return "ConnectionGraph{" +
-            "name='" + element.toString() + '\'' +
+            "name='" + name + '\'' +
             '}';
     }
 

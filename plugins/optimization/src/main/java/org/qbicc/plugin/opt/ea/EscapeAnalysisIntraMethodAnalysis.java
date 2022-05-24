@@ -83,10 +83,16 @@ public class EscapeAnalysisIntraMethodAnalysis implements ElementVisitor<Compila
         escapeAnalysisState.trackMethod(element, connectionGraph);
 
         final AnalysisContext analysisContext = new AnalysisContext(escapeAnalysisState, connectionGraph, ctxt.getBootstrapClassContext());
-        analysisContext.process(methodBody.getEntryBlock());
+        analysisContext.process(element, methodBody.getEntryBlock());
     }
 
     static final class AnalysisVisitor implements NodeVisitor<AnalysisContext, Void, Void, Void, Void> {
+        private final ExecutableElement element;
+
+        public AnalysisVisitor(ExecutableElement element) {
+            this.element = element;
+        }
+
         @Override
         public Void visit(AnalysisContext param, New node) {
             if (visitKnown(param, node)) {
@@ -153,7 +159,7 @@ public class EscapeAnalysisIntraMethodAnalysis implements ElementVisitor<Compila
         @Override
         public Void visit(AnalysisContext param, Call node) {
             if (visitKnown(param, node) && node.getValueHandle() instanceof Executable) {
-                param.escapeAnalysisState.trackCall(param.connectionGraph.element, node);
+                param.escapeAnalysisState.trackCall(element, node);
             }
 
             return null;
@@ -514,8 +520,8 @@ public class EscapeAnalysisIntraMethodAnalysis implements ElementVisitor<Compila
             return type.isSubtypeOf(bootstrapClassContext.findDefinedType(name).load().getObjectType());
         }
 
-        public void process(BasicBlock entryBlock) {
-            entryBlock.getTerminator().accept(new AnalysisVisitor(), this);
+        public void process(ExecutableElement element, BasicBlock entryBlock) {
+            entryBlock.getTerminator().accept(new AnalysisVisitor(element), this);
 
             // Incoming values for phi nodes can only be calculated upon finish.
             connectionGraph.resolveReturnedPhiValues();
