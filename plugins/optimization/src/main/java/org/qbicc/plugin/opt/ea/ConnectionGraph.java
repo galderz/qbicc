@@ -54,13 +54,6 @@ final class ConnectionGraph {
      */
     private final Map<Node, Value> pointsToEdges = new HashMap<>(); // solid (P) edges
 
-    /**
-     * A deferred edge from a node {@code p} to a node {@code q} means that {@code p} points to whatever {@code q} points to.
-     * They model assignments that copy references from one to another during intra method analysis.
-     * They're mostly used to link {@link ParameterValue} instances with their uses.
-     * During inter method analysis these are bypassed recursively to establish points to edges.
-     */
-    private final Map<Node, Node> deferredEdges = new HashMap<>(); // dashed (D) edges
     private final Map<Node, Collection<InstanceFieldOf>> fieldEdges = new HashMap<>(); // solid (F) edges
 
     /**
@@ -143,10 +136,6 @@ final class ConnectionGraph {
          return Objects.isNull(fields) ? Collections.emptyList() : fields;
     }
 
-    Node getDeferredEdge(Node node) {
-        return deferredEdges.get(node);
-    }
-
     void updateAfterInvokingMethod(Call callee, ConnectionGraph calleeCG) {
         // TODO this should really be removed, no method called that is not reachable should make it here
         if (callee.getArguments().size() > calleeCG.parameters.size())
@@ -196,41 +185,11 @@ final class ConnectionGraph {
     }
 
     void updateAtMethodExit() {
-        // Use by pass function to eliminate all deferred edges in the CG
-        bypassAllDeferredEdges(deferredEdges);
-
         // Mark all nodes reachable from a global escape nodes as global escape.
         propagateGlobalEscape();
 
         // Mark all nodes reachable from arg escape nodes, but not global escape, as arg escape.
         propagateArgEscapeOnly();
-    }
-
-    private void bypassAllDeferredEdges(Map<Node, Node> oldDeferredEdges) {
-        if (oldDeferredEdges.isEmpty()) {
-            deferredEdges.clear();
-            return;
-        }
-
-        Map<Node, Node> newDeferredEdges = new HashMap<>();
-        for (Node node : oldDeferredEdges.values()) {
-            final Node defersTo = oldDeferredEdges.get(node);
-            final Value pointsTo = getPointsToEdge(node);
-            if (defersTo != null || pointsTo != null) {
-                for (Map.Entry<Node, Node> incoming : oldDeferredEdges.entrySet()) {
-                    if (incoming.getValue().equals(node)) {
-                        if (defersTo != null) {
-                            newDeferredEdges.put(incoming.getKey(), defersTo);
-                        }
-                        if (pointsTo != null) {
-                            addPointsToEdgeIfAbsent(incoming.getKey(), pointsTo);
-                        }
-                    }
-                }
-            }
-        }
-
-        bypassAllDeferredEdges(newDeferredEdges);
     }
 
     private void propagateGlobalEscape() {
@@ -304,7 +263,6 @@ final class ConnectionGraph {
     ConnectionGraph union(ConnectionGraph other) {
         if (Objects.nonNull(other)) {
             this.pointsToEdges.putAll(other.pointsToEdges);
-            this.deferredEdges.putAll(other.deferredEdges);
             this.fieldEdges.putAll(other.fieldEdges);
 
             final Map<Node, EscapeValue> mergedEscapeValues = mergeEscapeValues(other);

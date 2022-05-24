@@ -60,7 +60,6 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Do
         param.attr("style", "filled");
         param.attr("fillcolor", nodeType(connectionGraph.getEscapeValue(node)).fillColor);
         param.nl();
-        addDeferredEdge(param, node, connectionGraph);
         addFieldEdges(param, node, connectionGraph);
         addPointsToEdge(param, node, connectionGraph);
         return name;
@@ -70,13 +69,6 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Do
         final Node pointsTo = connectionGraph.getPointsToEdge(node);
         if (Objects.nonNull(pointsTo)) {
             addEdge(param, node, pointsTo, EdgeType.POINTS_TO, "P");
-        }
-    }
-
-    private void addDeferredEdge(DotContext param, Node node, ConnectionGraph connectionGraph) {
-        final Node deferred = connectionGraph.getDeferredEdge(node);
-        if (Objects.nonNull(deferred)) {
-            addEdge(param, node, deferred, EdgeType.DEFERRED, "D");
         }
     }
 
