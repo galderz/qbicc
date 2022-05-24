@@ -16,7 +16,6 @@ import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.ParameterValue;
 import org.qbicc.graph.PhiValue;
-import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.StaticField;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
@@ -25,13 +24,16 @@ import org.qbicc.type.definition.element.ExecutableElement;
 import static java.util.stream.Collectors.groupingBy;
 
 final class ConnectionGraph {
-    // TODO Handle situations where a node has multiple points-to.
 
-    //      Even if a reference is potentially assigned multiple New nodes (e.g. branches), the refs are currently different.
     /**
      * Points-to are edges from references to objects referenced.
-     * The references are {@link ValueHandle} instances, e.g. {@link ReferenceHandle}, {@link StaticField}...etc.
-     * Referenced objects are normally {@link New} instances, but they can also be {@link ParameterValue}, {@link Call} or phantom nodes.
+     * Each node only points to one at other node at maximum.
+     * Even if a reference is potentially assigned multiple New nodes (e.g. branches), the graph nodes are currently different.
+     *
+     * The references can be {@link ValueHandle} instances, e.g. {@link InstanceFieldOf}, {@link StaticField}...etc,
+     * but they can also be {@link Value} instanaces like {@link org.qbicc.graph.CheckCast}.
+     * Referenced objects are {@link Value} instances.
+     * Normally they are {@link New} instances, but they can also be {@link ParameterValue} or {@link Call}.
      * <p>
      * Each method's connection graph tracks this during intra method analysis:
      * <p><ul>
@@ -50,7 +52,7 @@ final class ConnectionGraph {
      * </li>
      * </ul><p>
      */
-    private final Map<Node, Node> pointsToEdges = new HashMap<>(); // solid (P) edges
+    private final Map<Node, Value> pointsToEdges = new HashMap<>(); // solid (P) edges
 
     /**
      * A deferred edge from a node {@code p} to a node {@code q} means that {@code p} points to whatever {@code q} points to.
@@ -87,11 +89,11 @@ final class ConnectionGraph {
             '}';
     }
 
-    void addPointsToEdge(Node from, Node to) {
+    void addPointsToEdge(Node from, Value to) {
         addPointsToEdgeIfAbsent(from, to);
     }
 
-    Node getPointsToEdge(Node from) {
+    Value getPointsToEdge(Node from) {
         return pointsToEdges.get(from);
     }
 
@@ -213,7 +215,7 @@ final class ConnectionGraph {
         Map<Node, Node> newDeferredEdges = new HashMap<>();
         for (Node node : oldDeferredEdges.values()) {
             final Node defersTo = oldDeferredEdges.get(node);
-            final Node pointsTo = getPointsToEdge(node);
+            final Value pointsTo = getPointsToEdge(node);
             if (defersTo != null || pointsTo != null) {
                 for (Map.Entry<Node, Node> incoming : oldDeferredEdges.entrySet()) {
                     if (incoming.getValue().equals(node)) {
@@ -364,7 +366,7 @@ final class ConnectionGraph {
             .add(to);
     }
 
-    private boolean addPointsToEdgeIfAbsent(Node from, Node to) {
+    private boolean addPointsToEdgeIfAbsent(Node from, Value to) {
         return pointsToEdges.putIfAbsent(from, to) == null;
     }
 
