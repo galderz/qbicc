@@ -138,17 +138,13 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
             return;
         }
         Path path = dir.resolve(name + ".dot");
+        final Disassembler disassembler = new Disassembler(entryBlock);
+        disassembler.addBlock(entryBlock); // TODO add more blocks
+
         try {
             try (BufferedWriter bw = Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                bw.write("digraph {");
-                bw.newLine();
-                bw.write("graph [ rankdir = BT ];");
-                bw.newLine();
-                bw.write("edge [ splines = true ];");
-                bw.newLine();
-                bw.newLine();
-                new DotContext(bw, entryBlock, element, ctxt, constructDecorators()).process();
-                bw.write("}");
+                final DotFile dotfile = new DotFile(disassembler);
+                dotfile.writeTo(bw);
             } catch (IOException e) {
                 failedToWrite(ctxt, path, e);
             } catch (UncheckedIOException e) {
@@ -167,6 +163,42 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
                 // Ignore
             }
         }
+
+//        try {
+//            try (BufferedWriter bw = Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+//                bw.write("digraph {");
+//                bw.newLine();
+//                bw.write("fontname=\"Helvetica,Arial,sans-serif\"");
+//                bw.newLine();
+//                bw.write("node [fontname=\"Helvetica,Arial,sans-serif\"]");
+//                bw.newLine();
+//                bw.write("edge [fontname=\"Helvetica,Arial,sans-serif\"]");
+//                bw.newLine();
+//                bw.write("graph [ rankdir = LR ];");
+//                bw.newLine();
+//                bw.write("edge [ splines = true ];");
+//                bw.newLine();
+//                bw.newLine();
+//                new DotContext(bw, entryBlock, element, ctxt, constructDecorators()).process(disassembler);
+//                bw.write("}");
+//            } catch (IOException e) {
+//                failedToWrite(ctxt, path, e);
+//            } catch (UncheckedIOException e) {
+//                IOException cause = e.getCause();
+//                failedToWrite(ctxt, path, cause);
+//            } catch (TooBigException e) {
+//                log.debugf("Element \"%s\" is too big to graph", element);
+//                throw e;
+//            }
+//        } catch (TooBigException e) {
+//            try {
+//                // Some operating systems will not let you delete a file while it is open.
+//                // So, if the graph is too big, attempt to delete the file when the original file has been closed.
+//                Files.delete(path);
+//            } catch (IOException ex) {
+//                // Ignore
+//            }
+//        }
     }
 
     private static Diagnostic failedToWrite(final CompilationContext ctxt, final Path path, final IOException cause) {

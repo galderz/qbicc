@@ -79,6 +79,7 @@ import org.qbicc.graph.Neg;
 import org.qbicc.graph.New;
 import org.qbicc.graph.NewArray;
 import org.qbicc.graph.NewReferenceArray;
+import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
 import org.qbicc.graph.NonCommutativeBinaryValue;
 import org.qbicc.graph.NotNull;
@@ -112,6 +113,7 @@ import org.qbicc.graph.UnaryValue;
 import org.qbicc.graph.Unreachable;
 import org.qbicc.graph.UnsafeHandle;
 import org.qbicc.graph.Value;
+import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.ValueReturn;
 import org.qbicc.graph.VirtualMethodElementHandle;
 import org.qbicc.graph.Xor;
@@ -132,6 +134,10 @@ import org.qbicc.graph.literal.TypeLiteral;
 import org.qbicc.graph.literal.UndefinedLiteral;
 import org.qbicc.graph.literal.ValueConvertLiteral;
 import org.qbicc.graph.literal.ZeroInitializerLiteral;
+import org.qbicc.type.ClassObjectType;
+import org.qbicc.type.PhysicalObjectType;
+
+import java.util.Objects;
 
 /**
  * A node visitor which generates a GraphViz graph for a method or function body.
@@ -202,19 +208,21 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
     }
 
     public String visit(final DotContext param, final BlockEntry node) {
-        String name = param.getName(node);
-        param.appendTo(name);
-        param.attr("shape", "doublecircle");
-        param.attr("fixedsize", "shape");
-        String label = "";
-        if (node.getPinnedBlock() == param.getEntryBlock()) {
-            label = "start";
-            param.attr("style", "filled");
-            param.attr("fillcolor", NodeType.START_NODE.color);
-        }
-        param.attr("label", label);
-        param.nl();
-        param.addDependency(name);
+//        String name = param.getName(node);
+//        param.appendTo(name);
+//        param.attr("shape", "doublecircle");
+//        param.attr("fixedsize", "shape");
+//        String label = "";
+//        if (node.getPinnedBlock() == param.getEntryBlock()) {
+//            param.addToDisassembly("start");
+//
+////            label = "start";
+////            param.attr("style", "filled");
+////            param.attr("fillcolor", NodeType.START_NODE.color);
+//        }
+//        param.attr("label", label);
+//        param.nl();
+//        param.addDependency(name);
         return delegate.visit(param, node);
     }
 
@@ -260,12 +268,15 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
     }
 
     public String visit(final DotContext param, final InstanceFieldOf node) {
-        String name = param.getName(node);
-        param.appendTo(name);
-        param.attr("label", "field access\\n"+node.getVariableElement().getName());
-        param.nl();
-        param.addEdge(node, node.getValueHandle(), EdgeType.VALUE_DEPENDENCY);
-        return delegate.visit(param, node);
+        return node.getVariableElement().getName();
+//        param.addToDisassembly("field access");
+
+//        String name = param.getName(node);
+//        param.appendTo(name);
+//        param.attr("label", "field access\\n"+node.getVariableElement().getName());
+//        param.nl();
+//        param.addEdge(node, node.getValueHandle(), EdgeType.VALUE_DEPENDENCY);
+//        return delegate.visit(param, node);
     }
 
     public String visit(final DotContext param, final MemberOf node) {
@@ -299,11 +310,13 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
     }
 
     public String visit(final DotContext param, final ReferenceHandle node) {
-        String name = param.getName(node);
-        param.appendTo(name);
-        param.attr("label", "ref");
-        param.nl();
-        param.addEdge(node, node.getReferenceValue(), EdgeType.VALUE_DEPENDENCY);
+//        param.addToDisassembly("ref");
+
+//        String name = param.getName(node);
+//        param.appendTo(name);
+//        param.attr("label", "ref");
+//        param.nl();
+//        param.addEdge(node, node.getReferenceValue(), EdgeType.VALUE_DEPENDENCY);
         return delegate.visit(param, node);
     }
 
@@ -320,12 +333,20 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
 
     public String visit(DotContext param, ConstructorElementHandle node) {
         String name = param.getName(node);
-        param.appendTo(name);
-        param.nl();
-        param.attr("label", "constructor\\n" + node.getExecutable());
-        param.nl();
-        param.addEdge(node, node.getInstance(), EdgeType.VALUE_DEPENDENCY);
-        return delegate.visit(param, node);
+        return String.format(
+            "%s.%s constructor"
+            , param.getBlockName()
+            , param.visit(node.getInstance()).substring(1)
+        );
+        // param.addToDisassembly("constructor");
+
+//        String name = param.getName(node);
+//        param.appendTo(name);
+//        param.nl();
+//        param.attr("label", "constructor\\n" + node.getExecutable());
+//        param.nl();
+//        param.addEdge(node, node.getInstance(), EdgeType.VALUE_DEPENDENCY);
+//        return delegate.visit(param, node);
     }
 
     public String visit(final DotContext param, final CurrentThread node) {
@@ -665,20 +686,31 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
     }
 
     public String visit(final DotContext param, final ValueReturn node) {
+        // param.addToDisassembly(String.format("%d return", node.getBytecodeIndex()));
+
         String name = param.getName(node);
-        param.appendTo(name);
-        param.attr("shape", "rectangle");
-        param.attr("style", "diagonals, filled");
-        param.attr("fillcolor", NodeType.RETURN_NODE.color);
-        param.attr("label", "return");
-        param.attr("fixedsize", "shape");
-        param.nl();
-        param.addDependency(name);
-        param.processDependency(node.getDependency());
-        param.processDependencyList();
-        param.addEdge(node, node.getReturnValue(), EdgeType.VALUE_DEPENDENCY);
-        param.appendTo("}");
-        param.nl();
+        param.addDisassembly(String.format(
+            "<%s> return %%%s.%s\\l"
+            , name
+            , param.getBlockName()
+            , param.visit(node.getReturnValue()).substring(1)
+        ));
+        // param.addDisassemblyEdge(node, node.getReturnValue());
+
+//        String name = param.getName(node);
+//        param.appendTo(name);
+//        param.attr("shape", "rectangle");
+//        param.attr("style", "diagonals, filled");
+//        param.attr("fillcolor", NodeType.RETURN_NODE.color);
+//        param.attr("label", "return");
+//        param.attr("fixedsize", "shape");
+//        param.nl();
+//        param.addDependency(name);
+//        param.processDependency(node.getDependency());
+//        param.processDependencyList();
+//        param.addEdge(node, node.getReturnValue(), EdgeType.VALUE_DEPENDENCY);
+//        param.appendTo("}");
+//        param.nl();
         return delegate.visit(param, node);
     }
 
@@ -794,16 +826,23 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
 
     public String visit(final DotContext param, final Call node) {
         String name = param.getName(node);
-        param.appendTo(name);
-        param.attr("label", "call" + "\\n" + node.getValueHandle().toString());
-        param.attr("fixedsize", "shape");
-        param.nl();
-        param.addDependency(name);
-        param.processDependency(node.getDependency());
-        param.addEdge(node, node.getValueHandle(), EdgeType.VALUE_DEPENDENCY);
-        for (Value arg : node.getArguments()) {
-            param.addEdge(node, arg, EdgeType.VALUE_DEPENDENCY);
-        }
+        param.addDisassembly(String.format(
+            "<%s> call %s\\l"
+            , name
+            , param.describe(node.getValueHandle())
+        ));
+
+//        String name = param.getName(node);
+//        param.appendTo(name);
+//        param.attr("label", "call" + "\\n" + node.getValueHandle().toString());
+//        param.attr("fixedsize", "shape");
+//        param.nl();
+//        param.addDependency(name);
+//        param.processDependency(node.getDependency());
+//        param.addEdge(node, node.getValueHandle(), EdgeType.VALUE_DEPENDENCY);
+//        for (Value arg : node.getArguments()) {
+//            param.addEdge(node, arg, EdgeType.VALUE_DEPENDENCY);
+//        }
         return delegate.visit(param, node);
     }
 
@@ -1040,12 +1079,25 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
 
     public String visit(final DotContext param, final Load node) {
         String name = param.getName(node);
-        param.appendTo(name);
-        param.attr("label", "load");
-        param.nl();
-        param.addDependency(name);
-        param.processDependency(node.getDependency());
-        param.addEdge(node, node.getValueHandle(), EdgeType.VALUE_DEPENDENCY);
+        param.addDisassembly(String.format(
+            "<%s> %%%s.%s = load %%%s.%s %s\\l"
+            , name
+            , param.getBlockName()
+            , name.substring(1)
+            , param.getBlockName()
+            , getValueId(param, node.getValueHandle())
+            , param.describe(node.getValueHandle())
+        ));
+        // param.addDisassemblyEdge(node, getValue(node.getValueHandle()));
+
+//        String name = param.getName(node);
+//        param.appendTo(name);
+//        param.attr("label", "load");
+//        param.nl();
+//        param.addDependency(name);
+//        param.processDependency(node.getDependency());
+//        param.addEdge(node, node.getValueHandle(), EdgeType.VALUE_DEPENDENCY);
+
         return delegate.visit(param, node);
     }
 
@@ -1128,11 +1180,28 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
     }
 
     public String visit(final DotContext param, final New node) {
-        node(param, "new\\n" + node.getType().getUpperBound().toString(), node);
-        param.addEdge(node, node.getTypeId(), EdgeType.VALUE_DEPENDENCY, "typeId");
-        param.addEdge(node, node.getSize(), EdgeType.VALUE_DEPENDENCY, "size");
-        param.addEdge(node, node.getAlign(), EdgeType.VALUE_DEPENDENCY, "align");
+        String name = param.getName(node);
+        param.addDisassembly(String.format(
+            "<%s> %%%s.%s = new %s\\l"
+            , name
+            , param.getBlockName()
+            , name.substring(1)
+            , getTypeName(node.getType().getUpperBound())
+        ));
+
+//        node(param, "new\\n" + node.getType().getUpperBound().toString(), node);
+//        param.addEdge(node, node.getTypeId(), EdgeType.VALUE_DEPENDENCY, "typeId");
+//        param.addEdge(node, node.getSize(), EdgeType.VALUE_DEPENDENCY, "size");
+//        param.addEdge(node, node.getAlign(), EdgeType.VALUE_DEPENDENCY, "align");
         return delegate.visit(param, node);
+    }
+
+    private String getTypeName(PhysicalObjectType type) {
+        if (type instanceof ClassObjectType classObjectType) {
+            return classObjectType.getDefinition().getInternalName();
+        }
+
+        return type.toString();
     }
 
     public String visit(final DotContext param, final NewArray node) {
@@ -1175,15 +1244,17 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
     }
 
     public String visit(final DotContext param, final ParameterValue node) {
-        int index = node.getIndex();
-        StringBuilder b = new StringBuilder();
-        b.append(node.getType()).append(' ').append("param").append('[').append(node.getLabel());
-        if (index > 0) {
-            b.append(index);
-        }
-        b.append(']');
-        literal(param, b.toString());
-        return delegate.visit(param, node);
+        return node.getLabel() + node.getIndex();
+
+//        int index = node.getIndex();
+//        StringBuilder b = new StringBuilder();
+//        b.append(node.getType()).append(' ').append("param").append('[').append(node.getLabel());
+//        if (index > 0) {
+//            b.append(index);
+//        }
+//        b.append(']');
+//        literal(param, b.toString());
+//        return delegate.visit(param, node);
     }
 
     public String visit(final DotContext param, final PhiValue node) {
@@ -1249,13 +1320,23 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
 
     public String visit(final DotContext param, final Store node) {
         String name = param.getName(node);
-        param.appendTo(name);
-        param.attr("label", "store");
-        param.nl();
-        param.addDependency(name);
-        param.processDependency(node.getDependency());
-        param.addEdge(node, node.getValueHandle(), EdgeType.VALUE_DEPENDENCY);
-        param.addEdge(node, node.getValue(), EdgeType.VALUE_DEPENDENCY, "value");
+        param.addDisassembly(String.format(
+            "<%s> store %%%s.%s %s ← %s\\l"
+            , name
+            , param.getBlockName()
+            , getValueId(param, node.getValueHandle())
+            , param.describe(node.getValueHandle())
+            , param.describe(node.getValue())
+        ));
+        // param.addDisassemblyEdge(node, getValue(node.getValueHandle()));
+
+//        param.appendTo(name);
+//        param.attr("label", "store");
+//        param.nl();
+//        param.addDependency(name);
+//        param.processDependency(node.getDependency());
+//        param.addEdge(node, node.getValueHandle(), EdgeType.VALUE_DEPENDENCY);
+//        param.addEdge(node, node.getValue(), EdgeType.VALUE_DEPENDENCY, "value");
         return delegate.visit(param, node);
     }
 
@@ -1365,5 +1446,16 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
         param.addDependency(name);
         param.processDependency(node.getDependency());
         return name;
+    }
+
+    private String getValueId(final DotContext param, ValueHandle handle) {
+        if (handle instanceof InstanceFieldOf fieldOf
+            && fieldOf.getValueHandle() instanceof ReferenceHandle ref) {
+            final Value value = ref.getReferenceValue();
+            return param.visit(value).substring(1);
+        }
+
+        // TODO temporary measure until all situations covered
+        return "?";
     }
 }

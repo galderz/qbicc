@@ -22,6 +22,7 @@ import org.qbicc.graph.PhiValue;
 import org.qbicc.graph.Terminator;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
+import org.qbicc.graph.schedule.Schedule;
 import org.qbicc.type.definition.element.ExecutableElement;
 
 public class DotContext {
@@ -41,6 +42,10 @@ public class DotContext {
     private final List<NodePair> bbConnections = new ArrayList<>(); // stores pair of Terminator, BlockEntry
     private final Queue<PhiValue> phiQueue = new ArrayDeque<>();
 
+    private final List<String> disassembly = new ArrayList<>();
+    private final List<String> disassemblyEdges = new ArrayList<>();
+    private String bbName;
+
     DotContext(Appendable appendable, BasicBlock entryBlock, ExecutableElement element, CompilationContext ctxt,
                BiFunction<CompilationContext, NodeVisitor<DotContext, String, String, String, String>, NodeVisitor<DotContext, String, String, String, String>> nodeVisitorFactory
     ) {
@@ -52,6 +57,27 @@ public class DotContext {
 
     public ExecutableElement getElement() {
         return element;
+    }
+
+    public void addDisassembly(String str) {
+        disassembly.add(str);
+    }
+
+    public void addDisassemblyEdge(Node from, Node to) {
+        // TODO temporary measure until all situations covered
+        if (Objects.isNull(from) || Objects.isNull(to)) {
+            return;
+        }
+
+        String fromName = visit(from);
+        String toName = visit(to);
+        disassemblyEdges.add(String.format(
+            "%s:%s -> %s:%s"
+            , bbName
+            , fromName
+            , bbName
+            , toName
+        ));
     }
 
     public void appendTo(Object obj) {
@@ -96,6 +122,10 @@ public class DotContext {
 
     BasicBlock getEntryBlock() {
         return entryBlock;
+    }
+
+    String getBlockName() {
+        return bbName;
     }
 
     String nextName() {
@@ -190,18 +220,31 @@ public class DotContext {
         nl();
     }
 
-    void process() {
+    void process(Disassembler disassembler) {
         addToQueue(entryBlock);
         BasicBlock block;
         while ((block = blockQueue.poll()) != null) {
-            String bbName = nextBBName();
-            appendTo("subgraph cluster_" + bbName + " {");
-            nl();
-            appendTo("label = \"" + bbName + "\";");
-            nl();
-            visit(block.getTerminator());
+            disassembler.addBlock(block);
+            
+//            bbName = nextBBName();
+//            appendTo(bbName + " [\n");
+//
+//            for (Node node : schedule.getNodesForBlock(block)) {
+//                if (!(node instanceof Terminator)) {
+//                    visit(node);
+//                }
+//            }
+//            visit(block.getTerminator());
+//
+//            // appendTo(disassembly.stream().collect(Collectors.joining("\\n", " [label=\"", "\"]\n")));
+//
+//            appendTo(disassembly.stream().collect(Collectors.joining("|", "label = \"", "\"\n")));
+//
+//            appendTo("shape = \"record\"\n");
+//            appendTo("]\n");
+//            //appendTo(disassemblyEdges.stream().collect(Collectors.joining(";\n", "", ";\n")));
         }
-        connectBasicBlocks();
+        // connectBasicBlocks();
         processPhiQueue();
     }
 
@@ -223,6 +266,27 @@ public class DotContext {
         }
 
         return nodeName;
+    }
+
+    public String describe(Node node) {
+        if (!visited.containsKey(node)) {
+            register(node);
+        }
+
+        if (node instanceof Value value) {
+            return value.accept(nodeVisitor, this);
+        }
+
+        if (node instanceof Action action) {
+            return action.accept(nodeVisitor, this);
+        }
+
+        if (node instanceof ValueHandle valueHandle) {
+            return valueHandle.accept(nodeVisitor, this);
+        }
+
+        assert node instanceof Terminator;
+        return ((Terminator) node).accept(nodeVisitor, this);
     }
 
     private void connectBasicBlocks() {
