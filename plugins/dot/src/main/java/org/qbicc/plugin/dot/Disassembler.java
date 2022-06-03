@@ -5,26 +5,35 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.qbicc.graph.Action;
 import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.Call;
 import org.qbicc.graph.ConstructorElementHandle;
+import org.qbicc.graph.Executable;
 import org.qbicc.graph.InstanceFieldOf;
+import org.qbicc.graph.IsNe;
 import org.qbicc.graph.Load;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
 import org.qbicc.graph.ParameterValue;
 import org.qbicc.graph.ReferenceHandle;
+import org.qbicc.graph.Return;
+import org.qbicc.graph.Select;
+import org.qbicc.graph.StaticMethodElementHandle;
 import org.qbicc.graph.Store;
 import org.qbicc.graph.Terminator;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.ValueReturn;
+import org.qbicc.graph.literal.IntegerLiteral;
+import org.qbicc.graph.literal.Literal;
 import org.qbicc.graph.schedule.Schedule;
 import org.qbicc.type.ClassObjectType;
 import org.qbicc.type.PhysicalObjectType;
+import org.qbicc.type.generic.BaseTypeSignature;
 
 final class Disassembler {
     private final Schedule schedule;
@@ -115,6 +124,9 @@ final class Disassembler {
 
     // TODO switch to Void, Void, Void, Void
     private final class DisassembleVisitor implements NodeVisitor<Disassembler, String, String, String, String> {
+
+        // TODO add visitUnknown once all nodes are presumed to be covered, for catching missing ones
+
         @Override
         public String visit(Disassembler param, New node) {
             final String id = param.nextId();
@@ -127,7 +139,16 @@ final class Disassembler {
         @Override
         public String visit(Disassembler param, ValueReturn node) {
             final String id = param.nextId();
-            final String description = "return " + getId(node.getReturnValue());
+            final String description = "return " + showId(node.getReturnValue());
+            param.addLine(description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Return node) {
+            final String id = param.nextId();
+            final String description = "return";
             param.addLine(description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
@@ -136,8 +157,16 @@ final class Disassembler {
         @Override
         public String visit(Disassembler param, Call node) {
             final String id = param.nextId();
-            final String description = "call " + getDescription(node.getValueHandle());
-            param.addLine(description);
+            final String args = node.getArguments().stream()
+                .map(this::show)
+                .collect(Collectors.joining(" "));
+            final String description = "call " + showDescription(node.getValueHandle()) + " " + args;
+            if (node.getValueHandle() instanceof Executable exec
+                && !exec.getExecutable().getSignature().getReturnTypeSignature().equals(BaseTypeSignature.V)) {
+                param.addLine(id + " = " + description);
+            } else {
+                param.addLine(description);
+            }
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
         }
@@ -147,9 +176,9 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = String.format(
                 "store %s %s ← %s"
-                , getValueId(node.getValueHandle())
-                , getDescription(node.getValueHandle())
-                , getDescription(node.getValue())
+                , showValueId(node.getValueHandle())
+                , showDescription(node.getValueHandle())
+                , showDescription(node.getValue())
             );
             param.addLine(description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
@@ -161,8 +190,8 @@ final class Disassembler {
             final String id = param.nextId();
             String description = String.format(
                 "load %s %s"
-                , getValueId(node.getValueHandle())
-                , getDescription(node.getValueHandle())
+                , showValueId(node.getValueHandle())
+                , showDescription(node.getValueHandle())
             );
             param.addLine(id + " = " + description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
@@ -170,9 +199,43 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, Select node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "select %s ? %s : %s"
+                , showDescription(node.getCondition())
+                , showDescription(node.getTrueValue())
+                , showDescription(node.getFalseValue())
+            );
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, IsNe node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "%s != %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, ConstructorElementHandle node) {
             final String id = param.nextId();
-            final String description = getId(node.getInstance()) + " constructor";
+            final String description = showId(node.getInstance()) + " constructor";
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, StaticMethodElementHandle node) {
+            final String id = param.nextId();
+            final String description = node.getExecutable().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
         }
@@ -193,7 +256,23 @@ final class Disassembler {
             return id;
         }
 
-        private String getId(Node node) {
+        @Override
+        public String visit(Disassembler param, IntegerLiteral node) {
+            final String id = param.nextId();
+            final String description = String.valueOf(node.longValue());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        private String show(Node node) {
+            if (node instanceof Literal) {
+                return showDescription(node);
+            }
+
+            return showId(node);
+        }
+
+        private String showId(Node node) {
             final NodeInfo nodeInfo = disassemble(node);
             if (Objects.nonNull(nodeInfo)) {
                 return nodeInfo.id;
@@ -203,7 +282,7 @@ final class Disassembler {
             return "?";
         }
 
-        private String getDescription(Node node) {
+        private String showDescription(Node node) {
             final NodeInfo nodeInfo = disassemble(node);
             if (Objects.nonNull(nodeInfo)) {
                 return nodeInfo.description;
@@ -213,9 +292,9 @@ final class Disassembler {
             return "?";
         }
 
-        private String getValueId(ValueHandle handle) {
+        private String showValueId(ValueHandle handle) {
             if (handle instanceof InstanceFieldOf fieldOf && fieldOf.getValueHandle() instanceof ReferenceHandle ref) {
-                return getId(ref.getReferenceValue());
+                return showId(ref.getReferenceValue());
             }
 
             // TODO temporary measure until all situations covered
