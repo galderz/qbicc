@@ -15,10 +15,12 @@ import org.qbicc.graph.Action;
 import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.Call;
 import org.qbicc.graph.CallNoReturn;
+import org.qbicc.graph.CheckCast;
 import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.Executable;
 import org.qbicc.graph.If;
 import org.qbicc.graph.InstanceFieldOf;
+import org.qbicc.graph.InterfaceMethodElementHandle;
 import org.qbicc.graph.IsEq;
 import org.qbicc.graph.IsNe;
 import org.qbicc.graph.Load;
@@ -41,9 +43,10 @@ import org.qbicc.graph.ValueReturn;
 import org.qbicc.graph.literal.IntegerLiteral;
 import org.qbicc.graph.literal.NullLiteral;
 import org.qbicc.graph.literal.StringLiteral;
+import org.qbicc.graph.literal.TypeLiteral;
 import org.qbicc.graph.schedule.Schedule;
 import org.qbicc.type.ClassObjectType;
-import org.qbicc.type.PhysicalObjectType;
+import org.qbicc.type.ValueType;
 import org.qbicc.type.generic.BaseTypeSignature;
 
 final class Disassembler {
@@ -146,7 +149,7 @@ final class Disassembler {
         return nodeInfo;
     }
 
-    private static String getTypeName(PhysicalObjectType type) {
+    private static String unwrapTypeName(ValueType type) {
         if (type instanceof ClassObjectType classObjectType) {
             return classObjectType.getDefinition().getInternalName();
         }
@@ -173,7 +176,8 @@ final class Disassembler {
         @Override
         public String visit(Disassembler param, New node) {
             final String id = param.nextId();
-            final String description = "new " + getTypeName(node.getType().getUpperBound());
+            // final String description = "new " + getTypeName(node.getType().getUpperBound());
+            final String description = "new " + show(node.getTypeId());
             param.addLine(id + " = " + description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
@@ -314,9 +318,30 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, InterfaceMethodElementHandle node) {
+            final String id = param.nextId();
+            final String description = node.getExecutable().toString();
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, StaticMethodElementHandle node) {
             final String id = param.nextId();
             final String description = node.getExecutable().toString();
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, CheckCast node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "(%s) %s"
+                , show(node.getToType())
+                , show(node.getInput())
+            );
+            param.addLine(id + " = " + description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
         }
@@ -343,6 +368,14 @@ final class Disassembler {
         public String visit(Disassembler param, NotNull node) {
             final String id = param.nextId();
             final String description = "not null " + show(node.getInput());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, TypeLiteral node) {
+            final String id = param.nextId();
+            final String description = unwrapTypeName(node.getType().getUpperBound());
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
         }
