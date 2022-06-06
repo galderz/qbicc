@@ -1,8 +1,8 @@
 package org.qbicc.plugin.dot;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.List;
-import java.util.stream.IntStream;
 
 final class DotFile {
     final Disassembler disassembler;
@@ -16,12 +16,13 @@ final class DotFile {
         out.append("fontname = \"Helvetica,Arial,sans-serif\"").append(System.lineSeparator());
         out.append("node [fontname = \"Helvetica,Arial,sans-serif\"]").append(System.lineSeparator());
         out.append("edge [fontname = \"Helvetica,Arial,sans-serif\"]").append(System.lineSeparator());
-        out.append("graph [rankdir = LR];").append(System.lineSeparator());
+        // out.append("graph [rankdir = LR];").append(System.lineSeparator());
+        out.append("graph [rankdir = TB];").append(System.lineSeparator());
         out.append("edge [splines = true];").append(System.lineSeparator());
         out.append(System.lineSeparator());
 
-        final List<Disassembler.Block> blocks = disassembler.getBlocks();
-        for (Disassembler.Block block : blocks) {
+        final Collection<Disassembler.BlockInfo> blocks = disassembler.getBlocks().values();
+        for (Disassembler.BlockInfo block : blocks) {
             out.append(String.format("b%d [", block.id())).append(System.lineSeparator());
             out.append("shape = plaintext").append(System.lineSeparator());
             out.append("label = <").append(System.lineSeparator());
@@ -40,6 +41,18 @@ final class DotFile {
             out.append("</table>").append(System.lineSeparator());
             out.append(">").append(System.lineSeparator());
             out.append("]").append(System.lineSeparator());
+        }
+
+        final List<Disassembler.BlockEdge> blockEdges = disassembler.getBlockEdges();
+        for (Disassembler.BlockEdge blockEdge : blockEdges) {
+            out.append(String.format(
+                "b%d -> b%d [label = %s, style = %s, color = %s];"
+                , disassembler.findBlockId(blockEdge.from())
+                , disassembler.findBlockId(blockEdge.to())
+                , blockEdge.label()
+                , blockEdge.edgeType().style()
+                , blockEdge.edgeType().color()
+            )).append(System.lineSeparator());
         }
 
         out.append("}").append(System.lineSeparator());

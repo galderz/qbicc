@@ -24,7 +24,6 @@ import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.NodeVisitor;
 import org.qbicc.object.Function;
 import org.qbicc.object.ProgramModule;
-import org.qbicc.object.ProgramObject;
 import org.qbicc.object.ModuleSection;
 import org.qbicc.object.SectionObject;
 import org.qbicc.type.definition.DefinedTypeDefinition;
@@ -139,7 +138,7 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
         }
         Path path = dir.resolve(name + ".dot");
         final Disassembler disassembler = new Disassembler(entryBlock);
-        disassembler.addBlock(entryBlock); // TODO add more blocks
+        disassembler.run();
 
         try {
             try (BufferedWriter bw = Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {

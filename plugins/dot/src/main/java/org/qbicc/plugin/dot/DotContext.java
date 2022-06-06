@@ -22,7 +22,6 @@ import org.qbicc.graph.PhiValue;
 import org.qbicc.graph.Terminator;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
-import org.qbicc.graph.schedule.Schedule;
 import org.qbicc.type.definition.element.ExecutableElement;
 
 public class DotContext {
@@ -224,7 +223,7 @@ public class DotContext {
         addToQueue(entryBlock);
         BasicBlock block;
         while ((block = blockQueue.poll()) != null) {
-            disassembler.addBlock(block);
+            disassembler.disassemble(block);
             
 //            bbName = nextBBName();
 //            appendTo(bbName + " [\n");

@@ -1,23 +1,31 @@
 package org.qbicc.plugin.dot;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import org.qbicc.graph.Action;
 import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.Call;
+import org.qbicc.graph.CallNoReturn;
 import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.Executable;
+import org.qbicc.graph.If;
 import org.qbicc.graph.InstanceFieldOf;
+import org.qbicc.graph.IsEq;
 import org.qbicc.graph.IsNe;
 import org.qbicc.graph.Load;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
+import org.qbicc.graph.NotNull;
 import org.qbicc.graph.ParameterValue;
 import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.Return;
@@ -31,6 +39,7 @@ import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.ValueReturn;
 import org.qbicc.graph.literal.IntegerLiteral;
+import org.qbicc.graph.literal.NullLiteral;
 import org.qbicc.graph.schedule.Schedule;
 import org.qbicc.type.ClassObjectType;
 import org.qbicc.type.PhysicalObjectType;
@@ -42,21 +51,36 @@ final class Disassembler {
 
     // TODO do we need the list of blocks if we already have the Node -> NodeInfo mapping?
     //      the nodeInfo could be post-processed making sure the NodeInfo are sorted by id and you'd get the list back?
-    private final List<Block> blocks = new ArrayList<>();
+    // private final List<Block> blocks = new ArrayList<>();
+    private final Map<BasicBlock, BlockInfo> blocks = new HashMap<>();
 
     private final Map<Node, NodeInfo> nodeInfo = new HashMap<>();
-    private int blockId;
-    private int id;
+    private final Set<BasicBlock> blockQueued = ConcurrentHashMap.newKeySet();
+    private final Queue<BasicBlock> blockQueue = new ArrayDeque<>();
+    private final List<BlockEdge> blockEdges = new ArrayList<>(); // stores pair of Terminator, BlockEntry
+    private BasicBlock currentBlock;
+    private int currentBlockId;
+    private int currentNodeId;
 
     Disassembler(BasicBlock entryBlock) {
         schedule = Schedule.forMethod(entryBlock);
+        blockQueue.add(entryBlock);
     }
 
-    void addBlock(BasicBlock block) {
+    void run() {
+        do {
+            disassemble(blockQueue.poll());
+        } while (!blockQueue.isEmpty());
+
+        // TODO process phi queue
+    }
+
+    void disassemble(BasicBlock block) {
         final List<Node> nodes = schedule.getNodesForBlock(block);
 
-        id = 0;
-        blocks.add(new Block(blockId, new ArrayList<>()));
+        currentNodeId = 0;
+        currentBlock = block;
+        blocks.put(block, new BlockInfo(currentBlockId, new ArrayList<>()));
         
         for (Node node : nodes) {
             if (!(node instanceof Terminator)) {
@@ -67,27 +91,38 @@ final class Disassembler {
         incrementBlockId();
     }
 
-    List<Block> getBlocks() {
+    Map<BasicBlock, BlockInfo> getBlocks() {
         return blocks;
     }
 
+    List<BlockEdge> getBlockEdges() {
+        return blockEdges;
+    }
+
+    private void queueBlock(BasicBlock from, BasicBlock to, String label, DotAttributes style) {
+        blockEdges.add(new BlockEdge(from, to, label, style));
+        if (blockQueued.add(to)) {
+            blockQueue.add(to);
+        }
+    }
+
     private void addLine(String line) {
-        blocks.get(blockId).lines.add(line);
+        blocks.get(currentBlock).lines.add(line);
     }
 
     private void incrementBlockId() {
-        blockId++;
+        currentBlockId++;
     }
 
     private String nextId() {
-        final String nextId = "%b" + blockId + "." + id;
+        final String nextId = "%b" + currentBlockId + "." + currentNodeId;
         // nodeIds.put(node, nextId);
         incrementId();
         return nextId;
     }
 
     private void incrementId() {
-        id++;
+        currentNodeId++;
     }
 
     private NodeInfo disassemble(Node node) {
@@ -118,8 +153,14 @@ final class Disassembler {
         return type.toString();
     }
 
+    public int findBlockId(BasicBlock block) {
+        return blocks.get(block).id;
+    }
+
     // TODO remove -> switch back to List<List<String>
-    record Block(int id, List<String> lines) {}
+    record BlockInfo(int id, List<String> lines) {}
+
+    record BlockEdge(BasicBlock from, BasicBlock to, String label, DotAttributes edgeType) {}
 
     record NodeInfo(String id, String description) {}
 
@@ -150,6 +191,18 @@ final class Disassembler {
         public String visit(Disassembler param, Return node) {
             final String id = param.nextId();
             final String description = "return";
+            param.addLine(description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, CallNoReturn node) {
+            final String id = param.nextId();
+            final String args = node.getArguments().stream()
+                .map(this::show)
+                .collect(Collectors.joining(" "));
+            final String description = "throw " + show(node.getValueHandle()) + args;
             param.addLine(description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
@@ -209,10 +262,33 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, If node) {
+            final String id = param.nextId();
+            final String description = "if " + showDescription(node.getCondition());
+            param.addLine(description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            param.queueBlock(currentBlock, node.getTrueBranch(), "true", DotNodeVisitor.EdgeType.COND_TRUE_FLOW);
+            param.queueBlock(currentBlock, node.getFalseBranch(), "false", DotNodeVisitor.EdgeType.COND_FALSE_FLOW);
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, IsNe node) {
             final String id = param.nextId();
             final String description = String.format(
                 "%s != %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, IsEq node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "%s == %s"
                 , show(node.getLeftInput())
                 , show(node.getRightInput())
             );
@@ -248,7 +324,7 @@ final class Disassembler {
         public String visit(Disassembler param, InstanceFieldOf node) {
             final String id = param.nextId();
             String description = node.getValueHandle() instanceof ReferenceHandle ref
-                ? showId(ref.getReferenceValue()) + " " + node.getVariableElement().getName()
+                ? show(ref.getReferenceValue()) + " " + node.getVariableElement().getName()
                 : "?";
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
@@ -270,7 +346,27 @@ final class Disassembler {
             return id;
         }
 
+        @Override
+        public String visit(Disassembler param, NullLiteral node) {
+            final String id = param.nextId();
+            final String description = "null";
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, NotNull node) {
+            final String id = param.nextId();
+            final String description = "not null " + show(node.getInput());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
         private String show(Node node) {
+            if (node instanceof NotNull) {
+                return showDescription(node);
+            }
+
             if (node instanceof Unschedulable) {
                 return showDescription(node);
             }
