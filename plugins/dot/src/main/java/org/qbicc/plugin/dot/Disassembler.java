@@ -40,6 +40,7 @@ import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.ValueReturn;
 import org.qbicc.graph.literal.IntegerLiteral;
 import org.qbicc.graph.literal.NullLiteral;
+import org.qbicc.graph.literal.StringLiteral;
 import org.qbicc.graph.schedule.Schedule;
 import org.qbicc.type.ClassObjectType;
 import org.qbicc.type.PhysicalObjectType;
@@ -339,6 +340,14 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, NotNull node) {
+            final String id = param.nextId();
+            final String description = "not null " + show(node.getInput());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, IntegerLiteral node) {
             final String id = param.nextId();
             final String description = String.valueOf(node.longValue());
@@ -355,9 +364,9 @@ final class Disassembler {
         }
 
         @Override
-        public String visit(Disassembler param, NotNull node) {
+        public String visit(Disassembler param, StringLiteral node) {
             final String id = param.nextId();
-            final String description = "not null " + show(node.getInput());
+            final String description = '"' + node.getValue() + '"';
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
         }
