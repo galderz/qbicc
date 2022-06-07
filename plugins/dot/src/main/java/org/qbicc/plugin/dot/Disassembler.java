@@ -17,10 +17,14 @@ import org.qbicc.graph.Call;
 import org.qbicc.graph.CallNoReturn;
 import org.qbicc.graph.CheckCast;
 import org.qbicc.graph.ConstructorElementHandle;
+import org.qbicc.graph.CurrentThread;
 import org.qbicc.graph.Executable;
+import org.qbicc.graph.GetAndSet;
 import org.qbicc.graph.If;
 import org.qbicc.graph.InstanceFieldOf;
+import org.qbicc.graph.InstanceOf;
 import org.qbicc.graph.InterfaceMethodElementHandle;
+import org.qbicc.graph.Invoke;
 import org.qbicc.graph.IsEq;
 import org.qbicc.graph.IsNe;
 import org.qbicc.graph.Load;
@@ -36,6 +40,7 @@ import org.qbicc.graph.StaticField;
 import org.qbicc.graph.StaticMethodElementHandle;
 import org.qbicc.graph.Store;
 import org.qbicc.graph.Terminator;
+import org.qbicc.graph.Throw;
 import org.qbicc.graph.Unschedulable;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
@@ -176,7 +181,6 @@ final class Disassembler {
         @Override
         public String visit(Disassembler param, New node) {
             final String id = param.nextId();
-            // final String description = "new " + getTypeName(node.getType().getUpperBound());
             final String description = "new " + show(node.getTypeId());
             param.addLine(id + " = " + description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
@@ -184,30 +188,9 @@ final class Disassembler {
         }
 
         @Override
-        public String visit(Disassembler param, ValueReturn node) {
-            final String id = param.nextId();
-            final String description = "return " + showId(node.getReturnValue());
-            param.addLine(description);
-            param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
-        }
-
-        @Override
-        public String visit(Disassembler param, Return node) {
-            final String id = param.nextId();
-            final String description = "return";
-            param.addLine(description);
-            param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
-        }
-
-        @Override
         public String visit(Disassembler param, CallNoReturn node) {
             final String id = param.nextId();
-            final String args = node.getArguments().stream()
-                .map(this::show)
-                .collect(Collectors.joining(" "));
-            final String description = "throw " + show(node.getValueHandle()) + args;
+            final String description = showWithArguments("call-no-return", node.getValueHandle(), node.getArguments());
             param.addLine(description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
@@ -216,10 +199,7 @@ final class Disassembler {
         @Override
         public String visit(Disassembler param, Call node) {
             final String id = param.nextId();
-            final String args = node.getArguments().stream()
-                .map(this::show)
-                .collect(Collectors.joining(" "));
-            final String description = "call " + showDescription(node.getValueHandle()) + " " + args;
+            final String description = showWithArguments("call", node.getValueHandle(), node.getArguments());
             if (node.getValueHandle() instanceof Executable exec
                 && !exec.getExecutable().getSignature().getReturnTypeSignature().equals(BaseTypeSignature.V)) {
                 param.addLine(id + " = " + description);
@@ -267,6 +247,37 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, GetAndSet node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "get-and-set %s ← %s"
+                , show(node.getValueHandle())
+                , show(node.getUpdateValue())
+            );
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, ValueReturn node) {
+            final String id = param.nextId();
+            final String description = "return " + show(node.getReturnValue());
+            param.addLine(description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Return node) {
+            final String id = param.nextId();
+            final String description = "return";
+            param.addLine(description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, If node) {
             final String id = param.nextId();
             final String description = "if " + showDescription(node.getCondition());
@@ -274,6 +285,26 @@ final class Disassembler {
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queueBlock(currentBlock, node.getTrueBranch(), "true", DotNodeVisitor.EdgeType.COND_TRUE_FLOW);
             param.queueBlock(currentBlock, node.getFalseBranch(), "false", DotNodeVisitor.EdgeType.COND_FALSE_FLOW);
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Invoke node) {
+            final String id = param.nextId();
+            final String description = showWithArguments("invoke", node.getValueHandle(), node.getArguments());
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            param.queueBlock(currentBlock, node.getCatchBlock(), "catch", DotNodeVisitor.EdgeType.CONTROL_FLOW);
+            param.queueBlock(currentBlock, node.getResumeTarget(), "resume", DotNodeVisitor.EdgeType.CONTROL_FLOW);
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Throw node) {
+            final String id = param.nextId();
+            final String description = "throw " + show(node.getThrownValue());
+            param.addLine(description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
         }
 
@@ -296,6 +327,18 @@ final class Disassembler {
                 "%s == %s"
                 , show(node.getLeftInput())
                 , show(node.getRightInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, InstanceOf node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "%s instanceof %s"
+                , show(node.getInstance())
+                , unwrapTypeName(node.getCheckType())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
@@ -367,7 +410,7 @@ final class Disassembler {
         @Override
         public String visit(Disassembler param, NotNull node) {
             final String id = param.nextId();
-            final String description = "not null " + show(node.getInput());
+            final String description = "not-null " + show(node.getInput());
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
         }
@@ -404,6 +447,14 @@ final class Disassembler {
             return id;
         }
 
+        @Override
+        public String visit(Disassembler param, CurrentThread node) {
+            final String id = param.nextId();
+            final String description = "current-thread";
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
         private String show(Node node) {
             if (node instanceof NotNull) {
                 return showDescription(node);
@@ -417,13 +468,17 @@ final class Disassembler {
         }
 
         private String showId(Node node) {
+            if (node instanceof Invoke.ReturnValue invRet) {
+                return showId(invRet.getInvoke());
+            }
+
             final NodeInfo nodeInfo = disassemble(node);
             if (Objects.nonNull(nodeInfo)) {
                 return nodeInfo.id;
             }
 
             // TODO temporary measure until all situations covered
-            return "?";
+            return "(? " + node.getClass() + ")";
         }
 
         private String showDescription(Node node) {
@@ -433,7 +488,20 @@ final class Disassembler {
             }
 
             // TODO temporary measure until all situations covered
-            return "?";
+            return "(? " + node.getClass() + ")";
+        }
+
+        private String showWithArguments(String prefix, ValueHandle handle, List<Value> arguments) {
+            String args = arguments.stream()
+                .map(this::show)
+                .collect(Collectors.joining(" "));
+
+            return String.format(
+                "%s %s %s"
+                , prefix
+                , showDescription(handle)
+                , args
+            );
         }
     }
 }
