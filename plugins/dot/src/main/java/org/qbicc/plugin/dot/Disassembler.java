@@ -13,13 +13,17 @@ import java.util.stream.Collectors;
 
 import org.qbicc.graph.Action;
 import org.qbicc.graph.BasicBlock;
+import org.qbicc.graph.BinaryValue;
 import org.qbicc.graph.BitCast;
 import org.qbicc.graph.Call;
 import org.qbicc.graph.CallNoReturn;
 import org.qbicc.graph.CastValue;
 import org.qbicc.graph.CheckCast;
+import org.qbicc.graph.CmpL;
 import org.qbicc.graph.ConstructorElementHandle;
+import org.qbicc.graph.Convert;
 import org.qbicc.graph.CurrentThread;
+import org.qbicc.graph.Div;
 import org.qbicc.graph.ExactMethodElementHandle;
 import org.qbicc.graph.Executable;
 import org.qbicc.graph.Extend;
@@ -33,6 +37,7 @@ import org.qbicc.graph.Invoke;
 import org.qbicc.graph.IsEq;
 import org.qbicc.graph.IsNe;
 import org.qbicc.graph.Load;
+import org.qbicc.graph.Multiply;
 import org.qbicc.graph.Neg;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
@@ -55,6 +60,7 @@ import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.ValueReturn;
 import org.qbicc.graph.VirtualMethodElementHandle;
+import org.qbicc.graph.literal.FloatLiteral;
 import org.qbicc.graph.literal.IntegerLiteral;
 import org.qbicc.graph.literal.Literal;
 import org.qbicc.graph.literal.NullLiteral;
@@ -385,6 +391,45 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, CmpL node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "cmpl %s %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Multiply node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "multiply %s %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Div node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "div %s %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, StaticField node) {
             final String id = param.nextId();
             final String description = node.getVariableElement().toString();
@@ -488,6 +533,14 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, FloatLiteral node) {
+            final String id = param.nextId();
+            final String description = String.valueOf(node.doubleValue());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, NullLiteral node) {
             final String id = param.nextId();
             final String description = "null";
@@ -555,16 +608,18 @@ final class Disassembler {
             return id;
         }
 
+        @Override
+        public String visit(Disassembler param, Convert node) {
+            final String id = param.nextId();
+            final String description = "convert " + show(node.getInput());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
         private String show(Node node) {
-            if (node instanceof UnaryValue) {
-                return showDescription(node);
-            }
-
-            if (node instanceof CastValue) {
-                return showDescription(node);
-            }
-
-            if (node instanceof Unschedulable) {
+            if (node instanceof Unschedulable
+                || node instanceof UnaryValue
+                || node instanceof CastValue) {
                 return showDescription(node);
             }
 
