@@ -13,15 +13,18 @@ import java.util.stream.Collectors;
 
 import org.qbicc.graph.Action;
 import org.qbicc.graph.BasicBlock;
+import org.qbicc.graph.BitCast;
 import org.qbicc.graph.Call;
 import org.qbicc.graph.CallNoReturn;
 import org.qbicc.graph.CastValue;
 import org.qbicc.graph.CheckCast;
 import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.CurrentThread;
+import org.qbicc.graph.ExactMethodElementHandle;
 import org.qbicc.graph.Executable;
 import org.qbicc.graph.Extend;
 import org.qbicc.graph.GetAndSet;
+import org.qbicc.graph.Goto;
 import org.qbicc.graph.If;
 import org.qbicc.graph.InstanceFieldOf;
 import org.qbicc.graph.InstanceOf;
@@ -30,11 +33,13 @@ import org.qbicc.graph.Invoke;
 import org.qbicc.graph.IsEq;
 import org.qbicc.graph.IsNe;
 import org.qbicc.graph.Load;
+import org.qbicc.graph.Neg;
 import org.qbicc.graph.New;
 import org.qbicc.graph.Node;
 import org.qbicc.graph.NodeVisitor;
 import org.qbicc.graph.NotNull;
 import org.qbicc.graph.ParameterValue;
+import org.qbicc.graph.PhiValue;
 import org.qbicc.graph.ReferenceHandle;
 import org.qbicc.graph.Return;
 import org.qbicc.graph.Select;
@@ -44,12 +49,14 @@ import org.qbicc.graph.Store;
 import org.qbicc.graph.Terminator;
 import org.qbicc.graph.Throw;
 import org.qbicc.graph.Truncate;
+import org.qbicc.graph.UnaryValue;
 import org.qbicc.graph.Unschedulable;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.ValueReturn;
 import org.qbicc.graph.VirtualMethodElementHandle;
 import org.qbicc.graph.literal.IntegerLiteral;
+import org.qbicc.graph.literal.Literal;
 import org.qbicc.graph.literal.NullLiteral;
 import org.qbicc.graph.literal.StringLiteral;
 import org.qbicc.graph.literal.TypeLiteral;
@@ -71,6 +78,7 @@ final class Disassembler {
     private final Set<BasicBlock> blockQueued = ConcurrentHashMap.newKeySet();
     private final Queue<BasicBlock> blockQueue = new ArrayDeque<>();
     private final List<BlockEdge> blockEdges = new ArrayList<>(); // stores pair of Terminator, BlockEntry
+    private final Queue<PhiValue> phiQueue = new ArrayDeque<>();
     private BasicBlock currentBlock;
     private int currentBlockId;
     private int currentNodeId;
@@ -117,6 +125,10 @@ final class Disassembler {
         if (blockQueued.add(to)) {
             blockQueue.add(to);
         }
+    }
+
+    private void queuePhi(PhiValue node) {
+        phiQueue.add(node);
     }
 
     private void addLine(String line) {
@@ -304,6 +316,30 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, Goto node) {
+            final String id = param.nextId();
+            final String description = "goto";
+            param.addLine(description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            param.queueBlock(currentBlock, node.getResumeTarget(), "\"\"", DotNodeVisitor.EdgeType.CONTROL_FLOW);
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, PhiValue node) {
+            final String id = param.nextId();
+            String phiPossibleLiteralValues = node.getPossibleValues().stream()
+                .filter(n -> n instanceof Literal)
+                .map(this::show)
+                .collect(Collectors.joining(" "));
+            final String description = "phi " + phiPossibleLiteralValues;
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            param.queuePhi(node);
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, Throw node) {
             final String id = param.nextId();
             final String description = "throw " + show(node.getThrownValue());
@@ -382,6 +418,14 @@ final class Disassembler {
 
         @Override
         public String visit(Disassembler param, VirtualMethodElementHandle node) {
+            final String id = param.nextId();
+            final String description = node.getExecutable().toString();
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, ExactMethodElementHandle node) {
             final String id = param.nextId();
             final String description = node.getExecutable().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
@@ -491,8 +535,28 @@ final class Disassembler {
             return id;
         }
 
+        @Override
+        public String visit(Disassembler param, BitCast node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "bit-cast→%s %s"
+                , node.getType()
+                , show(node.getInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Neg node) {
+            final String id = param.nextId();
+            final String description = "neg " + show(node.getInput());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
         private String show(Node node) {
-            if (node instanceof NotNull) {
+            if (node instanceof UnaryValue) {
                 return showDescription(node);
             }
 
