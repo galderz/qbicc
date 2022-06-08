@@ -15,10 +15,12 @@ import org.qbicc.graph.Action;
 import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.Call;
 import org.qbicc.graph.CallNoReturn;
+import org.qbicc.graph.CastValue;
 import org.qbicc.graph.CheckCast;
 import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.CurrentThread;
 import org.qbicc.graph.Executable;
+import org.qbicc.graph.Extend;
 import org.qbicc.graph.GetAndSet;
 import org.qbicc.graph.If;
 import org.qbicc.graph.InstanceFieldOf;
@@ -41,10 +43,12 @@ import org.qbicc.graph.StaticMethodElementHandle;
 import org.qbicc.graph.Store;
 import org.qbicc.graph.Terminator;
 import org.qbicc.graph.Throw;
+import org.qbicc.graph.Truncate;
 import org.qbicc.graph.Unschedulable;
 import org.qbicc.graph.Value;
 import org.qbicc.graph.ValueHandle;
 import org.qbicc.graph.ValueReturn;
+import org.qbicc.graph.VirtualMethodElementHandle;
 import org.qbicc.graph.literal.IntegerLiteral;
 import org.qbicc.graph.literal.NullLiteral;
 import org.qbicc.graph.literal.StringLiteral;
@@ -377,6 +381,14 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, VirtualMethodElementHandle node) {
+            final String id = param.nextId();
+            final String description = node.getExecutable().toString();
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, CheckCast node) {
             final String id = param.nextId();
             final String description = String.format(
@@ -455,8 +467,36 @@ final class Disassembler {
             return id;
         }
 
+        @Override
+        public String visit(Disassembler param, Truncate node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "trunc→%s %s"
+                , node.getType()
+                , show(node.getInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Extend node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "extend→%s %s"
+                , node.getType()
+                , show(node.getInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
         private String show(Node node) {
             if (node instanceof NotNull) {
+                return showDescription(node);
+            }
+
+            if (node instanceof CastValue) {
                 return showDescription(node);
             }
 
