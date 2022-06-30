@@ -219,34 +219,6 @@ public class DotContext {
         nl();
     }
 
-    void process(Disassembler disassembler) {
-        addToQueue(entryBlock);
-        BasicBlock block;
-        while ((block = blockQueue.poll()) != null) {
-            disassembler.disassemble(block);
-            
-//            bbName = nextBBName();
-//            appendTo(bbName + " [\n");
-//
-//            for (Node node : schedule.getNodesForBlock(block)) {
-//                if (!(node instanceof Terminator)) {
-//                    visit(node);
-//                }
-//            }
-//            visit(block.getTerminator());
-//
-//            // appendTo(disassembly.stream().collect(Collectors.joining("\\n", " [label=\"", "\"]\n")));
-//
-//            appendTo(disassembly.stream().collect(Collectors.joining("|", "label = \"", "\"\n")));
-//
-//            appendTo("shape = \"record\"\n");
-//            appendTo("]\n");
-//            //appendTo(disassemblyEdges.stream().collect(Collectors.joining(";\n", "", ";\n")));
-        }
-        // connectBasicBlocks();
-        processPhiQueue();
-    }
-
     public String visit(Node node) {
         String nodeName = visited.get(node);
         if (Objects.isNull(nodeName)) {

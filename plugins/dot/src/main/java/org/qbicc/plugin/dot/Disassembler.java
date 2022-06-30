@@ -12,8 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import org.qbicc.graph.Action;
+import org.qbicc.graph.Add;
 import org.qbicc.graph.BasicBlock;
-import org.qbicc.graph.BinaryValue;
 import org.qbicc.graph.BitCast;
 import org.qbicc.graph.Call;
 import org.qbicc.graph.CallNoReturn;
@@ -35,6 +35,10 @@ import org.qbicc.graph.InstanceOf;
 import org.qbicc.graph.InterfaceMethodElementHandle;
 import org.qbicc.graph.Invoke;
 import org.qbicc.graph.IsEq;
+import org.qbicc.graph.IsGe;
+import org.qbicc.graph.IsGt;
+import org.qbicc.graph.IsLe;
+import org.qbicc.graph.IsLt;
 import org.qbicc.graph.IsNe;
 import org.qbicc.graph.Load;
 import org.qbicc.graph.Multiply;
@@ -51,6 +55,7 @@ import org.qbicc.graph.Select;
 import org.qbicc.graph.StaticField;
 import org.qbicc.graph.StaticMethodElementHandle;
 import org.qbicc.graph.Store;
+import org.qbicc.graph.Sub;
 import org.qbicc.graph.Terminator;
 import org.qbicc.graph.Throw;
 import org.qbicc.graph.Truncate;
@@ -62,7 +67,6 @@ import org.qbicc.graph.ValueReturn;
 import org.qbicc.graph.VirtualMethodElementHandle;
 import org.qbicc.graph.literal.FloatLiteral;
 import org.qbicc.graph.literal.IntegerLiteral;
-import org.qbicc.graph.literal.Literal;
 import org.qbicc.graph.literal.NullLiteral;
 import org.qbicc.graph.literal.StringLiteral;
 import org.qbicc.graph.literal.TypeLiteral;
@@ -99,7 +103,26 @@ final class Disassembler {
             disassemble(blockQueue.poll());
         } while (!blockQueue.isEmpty());
 
-        // TODO process phi queue
+        processPhiQueue();
+    }
+
+    private void processPhiQueue() {
+        PhiValue phi;
+        while ((phi = phiQueue.poll()) != null) {
+            final BlockInfo blockInfo = blocks.get(phi.getPinnedBlock());
+            // TODO all blocks (unless unreachable) should probably be there
+            //      if some are missing it could be due to blocks not yet visited
+            //      revisited the check once all nodes are handled
+            if (Objects.nonNull(blockInfo)) {
+                final Integer phiIndex = blockInfo.phiIndexes.get(phi);
+                final StringBuilder phiLine = new StringBuilder(blockInfo.lines.get(phiIndex));
+                for (BasicBlock block : phi.getPinnedBlock().getIncoming()) {
+                    Value value = phi.getValueForInput(block.getTerminator());
+                    phiLine.append(" ").append(visitor.show(value));
+                }
+                blockInfo.lines.set(phiIndex, phiLine.toString());
+            }
+        }
     }
 
     void disassemble(BasicBlock block) {
@@ -107,8 +130,8 @@ final class Disassembler {
 
         currentNodeId = 0;
         currentBlock = block;
-        blocks.put(block, new BlockInfo(currentBlockId, new ArrayList<>()));
-        
+        blocks.put(block, new BlockInfo(currentBlockId, new ArrayList<>(), new HashMap<>()));
+
         for (Node node : nodes) {
             if (!(node instanceof Terminator)) {
                 disassemble(node);
@@ -137,8 +160,15 @@ final class Disassembler {
         phiQueue.add(node);
     }
 
-    private void addLine(String line) {
-        blocks.get(currentBlock).lines.add(line);
+    private int addLine(String line) {
+        final List<String> lines = blocks.get(currentBlock).lines;
+        lines.add(line);
+        return lines.size() - 1;
+    }
+
+    private void addPhiLine(PhiValue node, String line) {
+        final int index = addLine(line);
+        blocks.get(currentBlock).phiIndexes.put(node, index);
     }
 
     private void incrementBlockId() {
@@ -189,7 +219,7 @@ final class Disassembler {
     }
 
     // TODO remove -> switch back to List<List<String>
-    record BlockInfo(int id, List<String> lines) {}
+    record BlockInfo(int id, List<String> lines, Map<PhiValue, Integer> phiIndexes) {}
 
     record BlockEdge(BasicBlock from, BasicBlock to, String label, DotAttributes edgeType) {}
 
@@ -334,12 +364,8 @@ final class Disassembler {
         @Override
         public String visit(Disassembler param, PhiValue node) {
             final String id = param.nextId();
-            String phiPossibleLiteralValues = node.getPossibleValues().stream()
-                .filter(n -> n instanceof Literal)
-                .map(this::show)
-                .collect(Collectors.joining(" "));
-            final String description = "phi " + phiPossibleLiteralValues;
-            param.addLine(id + " = " + description);
+            final String description = "phi";
+            param.addPhiLine(node, id + " = " + description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queuePhi(node);
             return id;
@@ -355,10 +381,10 @@ final class Disassembler {
         }
 
         @Override
-        public String visit(Disassembler param, IsNe node) {
+        public String visit(Disassembler param, IsEq node) {
             final String id = param.nextId();
             final String description = String.format(
-                "%s != %s"
+                "%s == %s"
                 , show(node.getLeftInput())
                 , show(node.getRightInput())
             );
@@ -367,10 +393,58 @@ final class Disassembler {
         }
 
         @Override
-        public String visit(Disassembler param, IsEq node) {
+        public String visit(Disassembler param, IsGe node) {
             final String id = param.nextId();
             final String description = String.format(
-                "%s == %s"
+                "%s ≥ %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, IsGt node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "%s > %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, IsLe node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "%s ≤ %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, IsLt node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "%s < %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, IsNe node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "%s != %s"
                 , show(node.getLeftInput())
                 , show(node.getRightInput())
             );
@@ -391,10 +465,36 @@ final class Disassembler {
         }
 
         @Override
+        public String visit(Disassembler param, Add node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "add %s %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
         public String visit(Disassembler param, CmpL node) {
             final String id = param.nextId();
             final String description = String.format(
                 "cmpl %s %s"
+                , show(node.getLeftInput())
+                , show(node.getRightInput())
+            );
+            param.addLine(id + " = " + description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, Div node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "div %s %s"
                 , show(node.getLeftInput())
                 , show(node.getRightInput())
             );
@@ -417,10 +517,10 @@ final class Disassembler {
         }
 
         @Override
-        public String visit(Disassembler param, Div node) {
+        public String visit(Disassembler param, Sub node) {
             final String id = param.nextId();
             final String description = String.format(
-                "div %s %s"
+                "sub %s %s"
                 , show(node.getLeftInput())
                 , show(node.getRightInput())
             );

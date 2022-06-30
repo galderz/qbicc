@@ -30,7 +30,12 @@ final class DotFile {
 
             for (String line : block.lines()) {
                 out.append("<tr><td align=\"text\">"); // TODO add escape state via bgcolor="..." to each line
-                out.append(line);
+
+                String escaped = line
+                    .replaceAll(">", "&gt;")
+                    .replaceAll("<", "&lt;");
+                out.append(escaped);
+
                 // Add extra space for proper formatting
                 for (int i = 0; i < line.length() / 10; i++) {
                     out.append("&nbsp;");
