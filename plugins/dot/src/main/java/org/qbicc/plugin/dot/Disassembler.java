@@ -19,6 +19,7 @@ import org.qbicc.graph.Call;
 import org.qbicc.graph.CallNoReturn;
 import org.qbicc.graph.CastValue;
 import org.qbicc.graph.CheckCast;
+import org.qbicc.graph.ClassOf;
 import org.qbicc.graph.CmpL;
 import org.qbicc.graph.ConstructorElementHandle;
 import org.qbicc.graph.Convert;
@@ -612,6 +613,14 @@ final class Disassembler {
         public String visit(Disassembler param, NotNull node) {
             final String id = param.nextId();
             final String description = "not-null " + show(node.getInput());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, ClassOf node) {
+            final String id = param.nextId();
+            final String description = show(node.getInput());
             param.nodeInfo.put(node, new NodeInfo(id, description));
             return id;
         }
