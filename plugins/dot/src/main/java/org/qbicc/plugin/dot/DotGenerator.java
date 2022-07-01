@@ -24,7 +24,6 @@ import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.NodeVisitor;
 import org.qbicc.object.Function;
 import org.qbicc.object.ProgramModule;
-import org.qbicc.object.ProgramObject;
 import org.qbicc.object.ModuleSection;
 import org.qbicc.object.SectionObject;
 import org.qbicc.type.definition.DefinedTypeDefinition;
@@ -138,17 +137,13 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
             return;
         }
         Path path = dir.resolve(name + ".dot");
+        final Disassembler disassembler = new Disassembler(entryBlock);
+        disassembler.run();
+
         try {
             try (BufferedWriter bw = Files.newBufferedWriter(path, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                bw.write("digraph {");
-                bw.newLine();
-                bw.write("graph [ rankdir = BT ];");
-                bw.newLine();
-                bw.write("edge [ splines = true ];");
-                bw.newLine();
-                bw.newLine();
-                new DotContext(bw, entryBlock, element, ctxt, constructDecorators()).process();
-                bw.write("}");
+                final DotFile dotfile = new DotFile(disassembler);
+                dotfile.writeTo(bw);
             } catch (IOException e) {
                 failedToWrite(ctxt, path, e);
             } catch (UncheckedIOException e) {
