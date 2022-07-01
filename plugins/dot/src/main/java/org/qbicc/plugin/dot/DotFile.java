@@ -33,7 +33,8 @@ final class DotFile {
 
                 String escaped = line
                     .replaceAll(">", "&gt;")
-                    .replaceAll("<", "&lt;");
+                    .replaceAll("<", "&lt;")
+                    .replaceAll("&", "&amp;");
                 out.append(escaped);
 
                 // Add extra space for proper formatting
