@@ -20,6 +20,7 @@ import org.qbicc.graph.BasicBlock;
 import org.qbicc.graph.BinaryValue;
 import org.qbicc.graph.BitCast;
 import org.qbicc.graph.BitReverse;
+import org.qbicc.graph.BlockEntry;
 import org.qbicc.graph.ByteSwap;
 import org.qbicc.graph.Call;
 import org.qbicc.graph.CallNoReturn;
@@ -147,7 +148,6 @@ import org.qbicc.graph.literal.MethodHandleLiteral;
 import org.qbicc.graph.literal.NullLiteral;
 import org.qbicc.graph.literal.ObjectLiteral;
 import org.qbicc.graph.literal.PointerLiteral;
-import org.qbicc.graph.literal.ProgramObjectLiteral;
 import org.qbicc.graph.literal.StringLiteral;
 import org.qbicc.graph.literal.TypeLiteral;
 import org.qbicc.graph.literal.UndefinedLiteral;
@@ -321,19 +321,25 @@ final class Disassembler {
             throw new IllegalStateException("Visitor for node " + node.getClass() + " is not implemented");
         }
 
-        // START actions
+        @Override
+        public String visitUnknown(Disassembler param, Action node) {
+            throw new IllegalStateException("Visitor for node " + node.getClass() + " is not implemented");
+        }
 
         @Override
-        public String visit(Disassembler param, InitCheck node) {
-            final String id = param.nextId();
-            final String description = String.format(
-                "check-init %s %s"
-                , node.getInitializerElement()
-                , show(node.getInitThunk())
-            );
-            param.addLine(description);
-            param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+        public String visitUnknown(Disassembler param, Terminator node) {
+            throw new IllegalStateException("Visitor for node " + node.getClass() + " is not implemented");
+        }
+
+        @Override
+        public String visitUnknown(Disassembler disassembler, ValueHandle node) {
+            throw new IllegalStateException("Visitor for node " + node.getClass() + " is not implemented");
+        }
+
+        // START actions
+
+        public String visit(Disassembler param, BlockEntry node) {
+            return null; // not shown
         }
 
         @Override
@@ -356,6 +362,19 @@ final class Disassembler {
                 "declare %s %s"
                 , node.getVariable()
                 , show(node.getValue())
+            );
+            param.addLine(description);
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return id;
+        }
+
+        @Override
+        public String visit(Disassembler param, InitCheck node) {
+            final String id = param.nextId();
+            final String description = String.format(
+                "check-init %s %s"
+                , node.getInitializerElement()
+                , show(node.getInitThunk())
             );
             param.addLine(description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
@@ -994,11 +1013,6 @@ final class Disassembler {
         @Override
         public String visit(Disassembler param, PointerLiteral node) {
             return literal(param, node,"pointer");
-        }
-
-        @Override
-        public String visit(Disassembler param, ProgramObjectLiteral node) {
-            return literal(param, node,"@" + node.getName());
         }
 
         @Override
