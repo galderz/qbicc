@@ -1,7 +1,7 @@
 package org.qbicc.plugin.dot;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -25,9 +25,42 @@ final class DotFile {
             """
         );
 
-        disassembler.getBlocks().values().stream()
-            .sorted(Comparator.comparing(Disassembler.BlockInfo::id))
-            .forEach(b -> writeBlock(out, b));
+        final List<Disassembler.BlockInfo> blocks = new ArrayList<>(disassembler.getBlocks().values());
+        // Sort blocks by id so that they can easily be read top-down, following the control graph
+        blocks.sort(Comparator.comparing(Disassembler.BlockInfo::id));
+
+        for (Disassembler.BlockInfo block : blocks) {
+            out.append(
+                """
+                b%d [
+                shape = plaintext
+                label = <
+                <table border="0" cellborder="1" cellspacing="0">
+                """
+                    .formatted(block.id())
+            );
+
+            final List<String> lines = block.lines();
+            for (int i = 0; i < lines.size(); i++) {
+                final String line = formatLine(lines.get(i));
+                final String lineColor = block.lineColors().get(i);
+
+                out.append(
+                    """
+                    <tr><td align="text" port="%d" bgcolor="%s">%s<br align="left"/></td></tr>
+                    """
+                        .formatted(i, Objects.nonNull(lineColor) ? lineColor : "white", line)
+                );
+            }
+
+            out.append(
+                """
+                </table>
+                >
+                ]
+                """
+            );
+        }
 
         for (Disassembler.BlockEdge blockEdge : disassembler.getBlockEdges()) {
             out.append(
@@ -62,43 +95,6 @@ final class DotFile {
             }
             """
         );
-    }
-
-    private static void writeBlock(Appendable out, Disassembler.BlockInfo block) {
-        try {
-            out.append(
-                """
-                b%d [
-                shape = plaintext
-                label = <
-                <table border="0" cellborder="1" cellspacing="0">
-                """
-                .formatted(block.id())
-            );
-
-            final List<String> lines = block.lines();
-            for (int i = 0; i < lines.size(); i++) {
-                final String line = formatLine(lines.get(i));
-                final String lineColor = block.lineColors().get(i);
-
-                out.append(
-                    """
-                    <tr><td align="text" port="%d" bgcolor="%s">%s<br align="left"/></td></tr>
-                    """
-                    .formatted(i, Objects.nonNull(lineColor) ? lineColor : "white", line)
-                );
-            }
-
-            out.append(
-                """
-                </table>
-                >
-                ]
-                """
-            );
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 
     private static String formatLine(String line) {
