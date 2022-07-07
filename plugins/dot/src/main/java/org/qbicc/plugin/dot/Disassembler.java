@@ -9,8 +9,10 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
+import org.qbicc.context.CompilationContext;
 import org.qbicc.graph.Action;
 import org.qbicc.graph.Add;
 import org.qbicc.graph.AddressOf;
@@ -156,26 +158,48 @@ import org.qbicc.graph.literal.ZeroInitializerLiteral;
 import org.qbicc.graph.schedule.Schedule;
 import org.qbicc.type.ClassObjectType;
 import org.qbicc.type.ValueType;
+import org.qbicc.type.definition.element.ExecutableElement;
 import org.qbicc.type.generic.BaseTypeSignature;
 
-final class Disassembler {
+public final class Disassembler {
     private final Schedule schedule;
-    private final DisassembleVisitor visitor = new DisassembleVisitor();
-
+    private final DisassembleVisitor visitor;
+    private final ExecutableElement element;
     private final Map<BasicBlock, BlockInfo> blocks = new HashMap<>();
-
     private final Map<Node, NodeInfo> nodeInfo = new HashMap<>();
     private final Set<BasicBlock> blockQueued = ConcurrentHashMap.newKeySet();
     private final Queue<BasicBlock> blockQueue = new ArrayDeque<>();
     private final List<BlockEdge> blockEdges = new ArrayList<>();
+    private final List<CellEdge> cellEdges = new ArrayList<>();
     private final Queue<PhiValue> phiQueue = new ArrayDeque<>();
+    private final Map<Node, CellId> cellIds = new HashMap<>();
     private BasicBlock currentBlock;
     private int currentBlockId;
     private int currentNodeId;
 
-    Disassembler(BasicBlock entryBlock) {
-        schedule = Schedule.forMethod(entryBlock);
-        blockQueue.add(entryBlock);
+    Disassembler(BasicBlock entryBlock, ExecutableElement element, CompilationContext ctxt, BiFunction<CompilationContext, NodeVisitor<Disassembler, String, String, String, String>, NodeVisitor<Disassembler, String, String, String, String>> nodeVisitorFactory) {
+        this.schedule = Schedule.forMethod(entryBlock);
+        this.visitor = new DisassembleVisitor(nodeVisitorFactory.apply(ctxt, new Terminus()));
+        this.element = element;
+        this.blockQueue.add(entryBlock);
+    }
+
+    public ExecutableElement getElement() {
+        return element;
+    }
+
+    public void setLineColor(String color) {
+        final BlockInfo blockInfo = blocks.get(currentBlock);
+        final List<String> lines = blockInfo.lines;
+        blockInfo.lineColors.put(lines.size() - 1, color);
+    }
+
+    public CellId getCellId(Node node) {
+        return cellIds.get(node);
+    }
+
+    public void addCellEdge(Node fromIndex, Node toIndex, String label, DotAttributes style) {
+        cellEdges.add(new CellEdge(fromIndex, toIndex, label, style));
     }
 
     void run() {
@@ -186,6 +210,10 @@ final class Disassembler {
             processBlockQueue();
             processPhiQueue();
         } while (!blockQueue.isEmpty() || !phiQueue.isEmpty());
+    }
+
+    int findBlockId(BasicBlock block) {
+        return blocks.get(block).id;
     }
 
     private void processBlockQueue() {
@@ -218,7 +246,7 @@ final class Disassembler {
 
         currentNodeId = 0;
         currentBlock = block;
-        blocks.put(block, new BlockInfo(currentBlockId, new ArrayList<>(), new HashMap<>()));
+        blocks.put(block, new BlockInfo(currentBlockId, new ArrayList<>(), new HashMap<>(), new HashMap<>()));
 
         for (Node node : nodes) {
             if (!(node instanceof Terminator)) {
@@ -237,6 +265,10 @@ final class Disassembler {
         return blockEdges;
     }
 
+    List<CellEdge> getCellEdges() {
+        return cellEdges;
+    }
+
     private void queueBlock(BasicBlock from, BasicBlock to, String label, DotAttributes style) {
         blockEdges.add(new BlockEdge(from, to, label, style));
         if (blockQueued.add(to)) {
@@ -248,14 +280,18 @@ final class Disassembler {
         phiQueue.add(node);
     }
 
-    private int addLine(String line) {
+    private int addLine(String line, Node... nodes) {
         final List<String> lines = blocks.get(currentBlock).lines;
         lines.add(line);
-        return lines.size() - 1;
+        final int lineIndex = lines.size() - 1;
+        for (Node node : nodes) {
+            cellIds.put(node, new CellId(currentBlockId, lineIndex));
+        }
+        return lineIndex;
     }
 
     private void addPhiLine(PhiValue node, String line) {
-        final int index = addLine(line);
+        final int index = addLine(line, node);
         blocks.get(currentBlock).phiIndexes.put(node, index);
     }
 
@@ -302,19 +338,28 @@ final class Disassembler {
         return type.toString();
     }
 
-    public int findBlockId(BasicBlock block) {
-        return blocks.get(block).id;
-    }
-
-    // TODO remove -> switch back to List<List<String>
-    record BlockInfo(int id, List<String> lines, Map<PhiValue, Integer> phiIndexes) {}
+    // The vast majority of lines will have the same color.
+    // Hence, keep just a small collection for those lines that have a different color.
+    record BlockInfo(int id, List<String> lines, Map<Integer, String> lineColors, Map<PhiValue, Integer> phiIndexes) {}
 
     record BlockEdge(BasicBlock from, BasicBlock to, String label, DotAttributes edgeType) {}
+
+    record CellEdge(Node from, Node to, String label, DotAttributes edgeType) {}
 
     record NodeInfo(String id, String description) {}
 
     // TODO switch to Void, Void, Void, Void
-    private final class DisassembleVisitor implements NodeVisitor<Disassembler, String, String, String, String> {
+    private final class DisassembleVisitor implements NodeVisitor.Delegating<Disassembler, String, String, String, String> {
+        private final NodeVisitor<Disassembler, String, String, String, String> delegate;
+
+        private DisassembleVisitor(NodeVisitor<Disassembler, String, String, String, String> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public NodeVisitor<Disassembler, String, String, String, String> getDelegateNodeVisitor() {
+            return delegate;
+        }
 
         @Override
         public String visitUnknown(Disassembler param, Value node) {
@@ -350,9 +395,9 @@ final class Disassembler {
                 , node.getVariable()
                 , show(node.getAddress())
             );
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -363,9 +408,9 @@ final class Disassembler {
                 , node.getVariable()
                 , show(node.getValue())
             );
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -376,36 +421,36 @@ final class Disassembler {
                 , node.getInitializerElement()
                 , show(node.getInitThunk())
             );
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Fence node) {
             final String id = param.nextId();
             final String description = "fence";
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, MonitorEnter node) {
             final String id = param.nextId();
             final String description = "monitor-enter " + show(node.getInstance());
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, MonitorExit node) {
             final String id = param.nextId();
             final String description = "monitor-exit " + show(node.getInstance());
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -416,9 +461,9 @@ final class Disassembler {
                 , showDescription(node.getValueHandle())
                 , show(node.getValue())
             );
-            param.addLine(description);
+            param.addLine(description, node, node.getValueHandle());
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         // END actions
@@ -430,30 +475,31 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = "address-of " + show(node.getValueHandle());
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Call node) {
-            return call("call", param, node, node.getArguments());
+            call("call", param, node, node.getArguments());
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, CallNoSideEffects node) {
-            return call("call-nse", param, node, node.getArguments());
+            call("call-nse", param, node, node.getArguments());
+            return delegate.visit(param, node);
         }
 
-        private String call(String prefix, Disassembler param, Node node, List<Value> args) {
+        private void call(String prefix, Disassembler param, Node node, List<Value> args) {
             final String id = param.nextId();
             final String description = showWithArguments(prefix, node.getValueHandle(), args);
             if (node.getValueHandle() instanceof Executable exec
                 && !exec.getExecutable().getSignature().getReturnTypeSignature().equals(BaseTypeSignature.V)) {
-                param.addLine(id + " = " + description);
+                param.addLine(id + " = " + description, node);
             } else {
-                param.addLine(description);
+                param.addLine(description, node);
             }
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
         }
 
         @Override
@@ -464,9 +510,9 @@ final class Disassembler {
                 , show(node.getToType())
                 , show(node.getInput())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -478,9 +524,9 @@ final class Disassembler {
                 , show(node.getExpectedValue())
                 , show(node.getUpdateValue())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -492,7 +538,7 @@ final class Disassembler {
                 , show(node.getArrayValue())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -504,7 +550,7 @@ final class Disassembler {
                 , show(node.getObjectValue())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -516,64 +562,72 @@ final class Disassembler {
                 , show(node.getCompoundValue())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndAdd node) {
-            return readModifyWrite("get+add %s ← %s", param, node);
+            readModifyWrite("get+add %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndBitwiseAnd node) {
-            return readModifyWrite("get+and %s ← %s", param, node);
+            readModifyWrite("get+and %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndBitwiseNand node) {
-            return readModifyWrite("get+nand %s ← %s", param, node);
+            readModifyWrite("get+nand %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndBitwiseOr node) {
-            return readModifyWrite("get+or %s ← %s", param, node);
+            readModifyWrite("get+or %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndBitwiseXor node) {
-            return readModifyWrite("get+xor %s ← %s", param, node);
+            readModifyWrite("get+xor %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndSet node) {
-            return readModifyWrite("get+set %s ← %s", param, node);
+            readModifyWrite("get+set %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndSetMax node) {
-            return readModifyWrite("get+set-max %s ← %s", param, node);
+            readModifyWrite("get+set-max %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndSetMin node) {
-            return readModifyWrite("get+set-min %s ← %s", param, node);
+            readModifyWrite("get+set-min %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, GetAndSub node) {
-            return readModifyWrite("get+sub %s ← %s", param, node);
+            readModifyWrite("get+sub %s ← %s", param, node);
+            return delegate.visit(param, node);
         }
 
-        private String readModifyWrite(String format, Disassembler param, ReadModifyWriteValue node) {
+        private void readModifyWrite(String format, Disassembler param, ReadModifyWriteValue node) {
             final String id = param.nextId();
             final String description = String.format(
                 format
                 , show(node.getValueHandle())
                 , show(node.getUpdateValue())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
         }
 
         @Override
@@ -585,9 +639,9 @@ final class Disassembler {
                 , show(node.getInsertedValue())
                 , show(node.getArrayValue())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -598,9 +652,9 @@ final class Disassembler {
                 , show(node.getInsertedValue())
                 , show(node.getCompoundValue())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -612,7 +666,7 @@ final class Disassembler {
                 , unwrapTypeName(node.getCheckType())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -624,18 +678,18 @@ final class Disassembler {
         public String visit(Disassembler param, Load node) {
             final String id = param.nextId();
             String description = "load " + showDescription(node.getValueHandle());
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, MemberSelector node) {
             final String id = param.nextId();
             String description = "sel " + show(node.getValueHandle());
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -649,18 +703,18 @@ final class Disassembler {
                 , node.getArrayType()
                 , dimensions
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, New node) {
             final String id = param.nextId();
             final String description = "new " + show(node.getTypeId());
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -671,9 +725,9 @@ final class Disassembler {
                 , node.getArrayType().toString()
                 , show(node.getSize())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -684,9 +738,9 @@ final class Disassembler {
                 , node.getArrayType().toString()
                 , show(node.getSize())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -694,15 +748,16 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = "offset-of " + node.getFieldElement().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ParameterValue node) {
             final String id = param.nextId();
             final String description = node.getLabel() + node.getIndex();
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -712,7 +767,7 @@ final class Disassembler {
             param.addPhiLine(node, id + " = " + description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queuePhi(node);
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -720,7 +775,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = "ref-to " + node.getType().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -732,9 +787,9 @@ final class Disassembler {
                 , showDescription(node.getTrueValue())
                 , showDescription(node.getFalseValue())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -745,9 +800,9 @@ final class Disassembler {
                 , node.getType()
                 , show(node.getCount())
             );
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -759,7 +814,7 @@ final class Disassembler {
                 , show(node.getVaList())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         // END values
@@ -768,129 +823,150 @@ final class Disassembler {
 
         @Override
         public String visit(Disassembler param, Add node) {
-            return binary("%s + %s", param, node);
+            binary("%s + %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, And node) {
-            return binary("%s & %s", param, node);
+            binary("%s & %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Cmp node) {
-            return binary("cmp %s %s", param, node);
+            binary("cmp %s %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, CmpL node) {
-            return binary("cmpl %s %s", param, node);
+            binary("cmpl %s %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, CmpG node) {
-            return binary("cmpg %s %s", param, node);
+            binary("cmpg %s %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Div node) {
-            return binary("%s / %s", param, node);
+            binary("%s / %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, IsEq node) {
-            return binary("%s == %s", param, node);
+            binary("%s == %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, IsGe node) {
-            return binary("%s ≥ %s", param, node);
+            binary("%s ≥ %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, IsGt node) {
-            return binary("%s > %s", param, node);
+            binary("%s > %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, IsLe node) {
-            return binary("%s ≤ %s", param, node);
+            binary("%s ≤ %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, IsLt node) {
-            return binary("%s < %s", param, node);
+            binary("%s < %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, IsNe node) {
-            return binary("%s != %s", param, node);
+            binary("%s != %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Max node) {
-            return binary("max %s %s", param, node);
+            binary("max %s %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Min node) {
-            return binary("min %s %s", param, node);
+            binary("min %s %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Mod node) {
-            return binary("%s %% %s", param, node);
+            binary("%s %% %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Multiply node) {
-            return binary("%s * %s", param, node);
+            binary("%s * %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Or node) {
-            return binary("%s | %s", param, node);
+            binary("%s | %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Rol node) {
-            return binary("%s |<< %s", param, node);
+            binary("%s |<< %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Ror node) {
-            return binary("%s |>> %s", param, node);
+            binary("%s |>> %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Shl node) {
-            return binary("%s << %s", param, node);
+            binary("%s << %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Shr node) {
-            return binary("%s >> %s", param, node);
+            binary("%s >> %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Sub node) {
-            return binary("%s - %s", param, node);
+            binary("%s - %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Xor node) {
-            return binary("%s ^ %s", param, node);
+            binary("%s ^ %s", param, node);
+            return delegate.visit(param, node);
         }
 
-        private String binary(String format, Disassembler param, BinaryValue node) {
+        private void binary(String format, Disassembler param, BinaryValue node) {
             final String id = param.nextId();
             final String description = String.format(
                 format
                 , show(node.getLeftInput())
                 , show(node.getRightInput())
             );
-            param.addLine(id + " = " + description);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
         }
 
         // END binary values
@@ -906,7 +982,7 @@ final class Disassembler {
                 , show(node.getInput())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -914,7 +990,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = "convert " + show(node.getInput());
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -926,7 +1002,7 @@ final class Disassembler {
                 , show(node.getInput())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -938,7 +1014,7 @@ final class Disassembler {
                 , show(node.getInput())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         // END cast values
@@ -947,103 +1023,121 @@ final class Disassembler {
 
         @Override
         public String visit(Disassembler param, ArrayLiteral node) {
-            return literal(param, node, "array [" + node.getValues().size() + "]");
+            literal(param, node, "array [" + node.getValues().size() + "]");
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, BitCastLiteral node) {
-            return literal(param, node, "bit cast →" + node.getType());
+            literal(param, node, "bit cast →" + node.getType());
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, BooleanLiteral node) {
-            return literal(param, node, String.valueOf(node.booleanValue()));
+            literal(param, node, String.valueOf(node.booleanValue()));
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, BlockLiteral node) {
-            return literal(param, node, "block");
+            literal(param, node, "block");
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ByteArrayLiteral node) {
-            return literal(param, node, "byte-array [" + node.getValues().length + "]");
+            literal(param, node, "byte-array [" + node.getValues().length + "]");
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, CompoundLiteral node) {
-            return literal(param, node, "compound " + node.getValues());
+            literal(param, node, "compound " + node.getValues());
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ConstantLiteral node) {
-            return literal(param, node, "const " + node.getType().toString());
+            literal(param, node, "const " + node.getType().toString());
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ElementOfLiteral node) {
-            return literal(param, node, "element-of " + node.getType());
+            literal(param, node, "element-of " + node.getType());
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, FloatLiteral node) {
-            return literal(param, node, String.valueOf(node.doubleValue()));
+            literal(param, node, String.valueOf(node.doubleValue()));
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, IntegerLiteral node) {
-            return literal(param, node, String.valueOf(node.longValue()));
+            literal(param, node, String.valueOf(node.longValue()));
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, MethodHandleLiteral node) {
-            return literal(param, node, node.toString());
+            literal(param, node, node.toString());
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, NullLiteral node) {
-            return literal(param, node,"null");
+            literal(param, node,"null");
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ObjectLiteral node) {
-            return literal(param, node,"object");
+            literal(param, node,"object");
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, PointerLiteral node) {
-            return literal(param, node,"pointer");
+            literal(param, node,"pointer");
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, StringLiteral node) {
-            return literal(param, node,'"' + node.getValue() + '"');
+            literal(param, node,'"' + node.getValue() + '"');
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, TypeLiteral node) {
-            return literal(param, node, unwrapTypeName(node.getType().getUpperBound()));
+            literal(param, node, unwrapTypeName(node.getType().getUpperBound()));
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, UndefinedLiteral node) {
-            return literal(param, node, "undef");
+            literal(param, node, "undef");
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ValueConvertLiteral node) {
-            return literal(param, node, "convert →" + node.getType().toString());
+            literal(param, node, "convert →" + node.getType().toString());
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ZeroInitializerLiteral node) {
-            return literal(param, node, "zero");
+            literal(param, node, "zero");
+            return delegate.visit(param, node);
         }
 
-        private String literal(Disassembler param, Literal node, String description) {
+        private void literal(Disassembler param, Literal node, String description) {
             final String id = param.nextId();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
         }
 
         // END literal values
@@ -1052,54 +1146,62 @@ final class Disassembler {
 
         @Override
         public String visit(Disassembler param, BitReverse node) {
-            return unary("bit-reverse %s", param, node);
+            unary("bit-reverse %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ByteSwap node) {
-            return unary("bit-swap %s", param, node);
+            unary("bit-swap %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ClassOf node) {
-            return unary("%s", param, node);
+            unary("%s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Comp node) {
-            return unary("~%s", param, node);
+            unary("~%s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, CountLeadingZeros node) {
-            return unary("clz %s", param, node);
+            unary("clz %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, CountTrailingZeros node) {
-            return unary("ctz %s", param, node);
+            unary("ctz %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Neg node) {
-            return unary("-%s", param, node);
+            unary("-%s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, NotNull node) {
-            return unary("not-null %s", param, node);
+            unary("not-null %s", param, node);
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, PopCount node) {
-            return unary("pop-count %s", param, node);
+            unary("pop-count %s", param, node);
+            return delegate.visit(param, node);
         }
 
-        private String unary(String format, Disassembler param, UnaryValue node) {
+        private void unary(String format, Disassembler param, UnaryValue node) {
             final String id = param.nextId();
             final String description = String.format(format, show(node.getInput()));
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
         }
 
         // END unary values
@@ -1115,7 +1217,7 @@ final class Disassembler {
                 , node.getConstraints()
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1123,7 +1225,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = showId(node.getInstance()) + " constructor";
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1131,7 +1233,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = "current-thread";
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1143,7 +1245,7 @@ final class Disassembler {
                 , show(node.getIndex())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1151,7 +1253,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getExecutable().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1159,7 +1261,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getExecutable().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1167,7 +1269,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getVariableElement().getName();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1175,7 +1277,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getExecutable().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1185,7 +1287,7 @@ final class Disassembler {
                 ? show(ref.getReferenceValue()) + " " + node.getVariableElement().getName()
                 : "?";
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1193,7 +1295,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getExecutable().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1201,7 +1303,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getVariableElement().getName();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1209,7 +1311,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = "member-of " + show(node.getValueHandle());
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1217,7 +1319,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = "prt " + show(node.getPointerValue());
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1225,7 +1327,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = "ref " + show(node.getReferenceValue());
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1233,7 +1335,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getVariableElement().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1241,7 +1343,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getExecutable().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1253,7 +1355,7 @@ final class Disassembler {
                 , show(node.getOffset())
             );
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1261,7 +1363,7 @@ final class Disassembler {
             final String id = param.nextId();
             final String description = node.getExecutable().toString();
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         // END value handles
@@ -1272,138 +1374,138 @@ final class Disassembler {
         public String visit(Disassembler param, CallNoReturn node) {
             final String id = param.nextId();
             final String description = showWithArguments("call-no-return", node.getValueHandle(), node.getArguments());
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Goto node) {
             final String id = param.nextId();
             final String description = "goto";
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queueBlock(currentBlock, node.getResumeTarget(), "\"\"", DotNodeVisitor.EdgeType.CONTROL_FLOW);
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, If node) {
             final String id = param.nextId();
             final String description = "if " + showDescription(node.getCondition());
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queueBlock(currentBlock, node.getTrueBranch(), "true", DotNodeVisitor.EdgeType.COND_TRUE_FLOW);
             param.queueBlock(currentBlock, node.getFalseBranch(), "false", DotNodeVisitor.EdgeType.COND_FALSE_FLOW);
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Invoke node) {
             final String id = param.nextId();
             final String description = showWithArguments("invoke", node.getValueHandle(), node.getArguments());
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queueBlock(currentBlock, node.getCatchBlock(), "catch", DotNodeVisitor.EdgeType.CONTROL_FLOW);
             param.queueBlock(currentBlock, node.getResumeTarget(), "resume", DotNodeVisitor.EdgeType.CONTROL_FLOW);
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, InvokeNoReturn node) {
             final String id = param.nextId();
             final String description = showWithArguments("invoke-no-return", node.getValueHandle(), node.getArguments());
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queueBlock(currentBlock, node.getCatchBlock(), "catch", DotNodeVisitor.EdgeType.CONTROL_FLOW);
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Jsr node) {
             final String id = param.nextId();
             final String description = "jsr";
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queueBlock(currentBlock, node.getResumeTarget(), "ret", DotNodeVisitor.EdgeType.RET_RESUME_FLOW);
             param.queueBlock(currentBlock, node.getJsrTarget(), "to", DotNodeVisitor.EdgeType.CONTROL_FLOW);
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Ret node) {
             final String id = param.nextId();
             final String description = "ret";
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Return node) {
             final String id = param.nextId();
             final String description = "return";
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Switch node) {
             final String id = param.nextId();
             final String description = "switch " + show(node.getSwitchValue());
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             for (int i = 0; i < node.getNumberOfValues(); i++) {
                 param.queueBlock(currentBlock, node.getTargetForIndex(i), String.valueOf(node.getValueForIndex(i)), DotNodeVisitor.EdgeType.COND_TRUE_FLOW);
             }
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, TailCall node) {
             final String id = param.nextId();
             final String description = showWithArguments("tail-call", node.getValueHandle(), node.getArguments());
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, TailInvoke node) {
             final String id = param.nextId();
             final String description = showWithArguments("tail-invoke", node.getValueHandle(), node.getArguments());
-            param.addLine(id + " = " + description);
+            param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             param.queueBlock(currentBlock, node.getCatchBlock(), "catch", DotNodeVisitor.EdgeType.CONTROL_FLOW);
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Throw node) {
             final String id = param.nextId();
             final String description = "throw " + show(node.getThrownValue());
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, Unreachable node) {
             final String id = param.nextId();
             final String description = "unreachable";
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         @Override
         public String visit(Disassembler param, ValueReturn node) {
             final String id = param.nextId();
             final String description = "return " + show(node.getReturnValue());
-            param.addLine(description);
+            param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            return id;
+            return delegate.visit(param, node);
         }
 
         // END terminators
@@ -1453,6 +1555,35 @@ final class Disassembler {
                 , showDescription(handle)
                 , args
             );
+        }
+    }
+
+    private static final class Terminus implements NodeVisitor<Disassembler, String, String, String, String> {
+        @Override
+        public String visitUnknown(Disassembler param, Action node) {
+            return null;
+        }
+
+        @Override
+        public String visitUnknown(Disassembler param, Terminator node) {
+            return null;
+        }
+
+        @Override
+        public String visitUnknown(Disassembler param, ValueHandle node) {
+            return null;
+        }
+
+        @Override
+        public String visitUnknown(Disassembler param, Value node) {
+            return null;
+        }
+    }
+
+    record CellId(int block, int line) {
+        @Override
+        public String toString() {
+            return String.format("b%d:%d", block, line);
         }
     }
 }

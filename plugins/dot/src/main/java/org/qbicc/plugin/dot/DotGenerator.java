@@ -42,7 +42,7 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
     private final Phase phase;
     private final String name;
     private final GraphGenFilter filter;
-    private final List<BiFunction<CompilationContext, NodeVisitor<DotContext, String, String, String, String>, NodeVisitor<DotContext, String, String, String, String>>> visitorFactories = new ArrayList<>();
+    private final List<BiFunction<CompilationContext, NodeVisitor<Disassembler, String, String, String, String>, NodeVisitor<Disassembler, String, String, String, String>>> visitorFactories = new ArrayList<>();
 
     public DotGenerator(Phase p, GraphGenConfig graphGenConfig) {
         this(p, p.toString(), graphGenConfig);
@@ -56,10 +56,10 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
         } else {
             filter = null;
         }
-        this.addVisitorFactory(DotNodeVisitor::new);
+        // this.addVisitorFactory(DotNodeVisitor::new);
     }
 
-    public DotGenerator addVisitorFactory(BiFunction<CompilationContext, NodeVisitor<DotContext, String, String, String, String>, NodeVisitor<DotContext, String, String, String, String>> factory) {
+    public DotGenerator addVisitorFactory(BiFunction<CompilationContext, NodeVisitor<Disassembler, String, String, String, String>, NodeVisitor<Disassembler, String, String, String, String>> factory) {
         visitorFactories.add(factory);
         return this;
     }
@@ -137,7 +137,7 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
             return;
         }
         Path path = dir.resolve(name + ".dot");
-        final Disassembler disassembler = new Disassembler(entryBlock);
+        final Disassembler disassembler = new Disassembler(entryBlock, element, ctxt, constructDecorators());
         disassembler.run();
 
         try {
@@ -168,7 +168,7 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
         return ctxt.warning("Failed to write \"%s\": %s", path, cause);
     }
 
-    private BiFunction<CompilationContext, NodeVisitor<DotContext, String, String, String, String>, NodeVisitor<DotContext, String, String, String, String>> constructDecorators() {
+    private BiFunction<CompilationContext, NodeVisitor<Disassembler, String, String, String, String>, NodeVisitor<Disassembler, String, String, String, String>> constructDecorators() {
         if (visitorFactories.isEmpty()) {
             return (dtxt, v) -> v;
         }

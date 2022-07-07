@@ -170,6 +170,10 @@ public class DotNodeVisitor implements NodeVisitor.Delegating<DotContext, String
         public String style() {
             return this.style;
         }
+
+        public String portPos() {
+            return "";
+        }
     }
 
     private enum NodeType {
