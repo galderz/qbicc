@@ -16,28 +16,28 @@ import org.qbicc.graph.ValueHandle;
 import org.qbicc.plugin.dot.Disassembler;
 import org.qbicc.plugin.dot.DotAttributes;
 
-public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Disassembler, String, String, String, String> {
-    private final NodeVisitor<Disassembler, String, String, String, String> delegate;
+public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Disassembler, Void, Void, Void, Void> {
+    private final NodeVisitor<Disassembler, Void, Void, Void, Void> delegate;
     private final EscapeAnalysisState escapeAnalysisState;
 
-    public EscapeAnalysisDotVisitor(CompilationContext ctxt, NodeVisitor<Disassembler, String, String, String, String> delegate) {
+    public EscapeAnalysisDotVisitor(CompilationContext ctxt, NodeVisitor<Disassembler, Void, Void, Void, Void> delegate) {
         this.delegate = delegate;
         this.escapeAnalysisState = EscapeAnalysisState.get(ctxt);
     }
 
     @Override
-    public NodeVisitor<Disassembler, String, String, String, String> getDelegateNodeVisitor() {
+    public NodeVisitor<Disassembler, Void, Void, Void, Void> getDelegateNodeVisitor() {
         return delegate;
     }
 
     @Override
-    public String visit(Disassembler param, New node) {
+    public Void visit(Disassembler param, New node) {
         decorate(param, node);
         return delegate.visit(param, node);
     }
 
     @Override
-    public String visit(Disassembler param, Store node) {
+    public Void visit(Disassembler param, Store node) {
         final ValueHandle valueHandle = node.getValueHandle();
         if (valueHandle instanceof StaticField || valueHandle instanceof InstanceFieldOf) {
             decorate(param, valueHandle);
@@ -47,13 +47,13 @@ public final class EscapeAnalysisDotVisitor implements NodeVisitor.Delegating<Di
     }
 
     @Override
-    public String visit(Disassembler param, ParameterValue node) {
+    public Void visit(Disassembler param, ParameterValue node) {
         decorate(param, node);
         return delegate.visit(param, node);
     }
 
     @Override
-    public String visit(Disassembler param, PhiValue node) {
+    public Void visit(Disassembler param, PhiValue node) {
         decorate(param, node);
         return delegate.visit(param, node);
     }
