@@ -56,7 +56,6 @@ public class DotGenerator implements ElementVisitor<CompilationContext, Void>, C
         } else {
             filter = null;
         }
-        // this.addVisitorFactory(DotNodeVisitor::new);
     }
 
     public DotGenerator addVisitorFactory(BiFunction<CompilationContext, NodeVisitor<Disassembler, Void, Void, Void, Void>, NodeVisitor<Disassembler, Void, Void, Void, Void>> factory) {
