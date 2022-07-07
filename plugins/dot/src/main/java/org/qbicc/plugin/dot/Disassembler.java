@@ -223,20 +223,34 @@ public final class Disassembler {
     }
 
     private void processPhiQueue() {
-        PhiValue phi;
-        while ((phi = phiQueue.poll()) != null) {
+        while (!phiQueue.isEmpty()) {
+            final PhiValue phi = phiQueue.poll();
             final BlockInfo blockInfo = blocks.get(phi.getPinnedBlock());
             // Block info for pinned block might be temporary null if not yet visited, but it will eventually be visited
             if (Objects.nonNull(blockInfo)) {
                 final Integer phiIndex = blockInfo.phiIndexes.get(phi);
-                final StringBuilder phiLine = new StringBuilder(blockInfo.lines.get(phiIndex));
-                for (BasicBlock block : phi.getPinnedBlock().getIncoming()) {
-                    Value value = phi.getValueForInput(block.getTerminator());
-                    phiLine.append(" ").append(visitor.show(value));
-                }
-                blockInfo.lines.set(phiIndex, phiLine.toString());
+                final String phiValues = phi.getPinnedBlock().getIncoming().stream()
+                    .map(incomingBlock -> showIncomingPhiValues(incomingBlock, phi))
+                    .collect(Collectors.joining(", ", " ", ""));
+                blockInfo.lines.set(phiIndex, blockInfo.lines.get(phiIndex) + phiValues);
             }
         }
+    }
+
+    String showIncomingPhiValues(BasicBlock block, PhiValue phi) {
+        final BlockInfo incomingBlockInfo = getOrDisassembleBlock(block);
+        String value = visitor.show(phi.getValueForInput(block.getTerminator()));
+        return String.format("b%d %s", incomingBlockInfo.id, value);
+    }
+
+    private BlockInfo getOrDisassembleBlock(BasicBlock block) {
+        final BlockInfo blockInfo = blocks.get(block);
+        if (Objects.nonNull(blockInfo)) {
+            return blockInfo;
+        }
+        
+        disassemble(block);
+        return blocks.get(block);
     }
 
     void disassemble(BasicBlock block) {
