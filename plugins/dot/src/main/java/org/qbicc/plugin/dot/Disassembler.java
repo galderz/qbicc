@@ -667,7 +667,10 @@ public final class Disassembler {
 
         @Override
         public String visit(Disassembler param, Invoke.ReturnValue node) {
-            return visit(param, node.getInvoke());
+            final String id = param.nextId();
+            String description = "return-of " + show(node.getInvoke());
+            param.nodeInfo.put(node, new NodeInfo(id, description));
+            return delegate.visit(param, node);
         }
 
         @Override
@@ -1521,23 +1524,11 @@ public final class Disassembler {
                 return showId(invRet.getInvoke());
             }
 
-            final NodeInfo nodeInfo = disassemble(node);
-            if (Objects.nonNull(nodeInfo)) {
-                return nodeInfo.id;
-            }
-
-            // TODO temporary measure until all situations covered
-            return "(? " + node.getClass() + ")";
+            return disassemble(node).id;
         }
 
         private String showDescription(Node node) {
-            final NodeInfo nodeInfo = disassemble(node);
-            if (Objects.nonNull(nodeInfo)) {
-                return nodeInfo.description;
-            }
-
-            // TODO temporary measure until all situations covered
-            return "(? " + node.getClass() + ")";
+            return disassemble(node).description;
         }
 
         private String showWithArguments(String prefix, ValueHandle handle, List<Value> arguments) {
