@@ -298,7 +298,6 @@ public final class Disassembler {
 
     private String nextId() {
         final String nextId = "%b" + currentBlockId + "." + currentNodeId;
-        // nodeIds.put(node, nextId);
         incrementId();
         return nextId;
     }
@@ -1382,7 +1381,7 @@ public final class Disassembler {
             final String description = "goto";
             param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            param.queueBlock(currentBlock, node.getResumeTarget(), "\"\"", DotNodeVisitor.EdgeType.CONTROL_FLOW);
+            param.queueBlock(currentBlock, node.getResumeTarget(), "\"\"", EdgeType.CONTROL_FLOW);
             return delegate.visit(param, node);
         }
 
@@ -1392,8 +1391,8 @@ public final class Disassembler {
             final String description = "if " + showDescription(node.getCondition());
             param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            param.queueBlock(currentBlock, node.getTrueBranch(), "true", DotNodeVisitor.EdgeType.COND_TRUE_FLOW);
-            param.queueBlock(currentBlock, node.getFalseBranch(), "false", DotNodeVisitor.EdgeType.COND_FALSE_FLOW);
+            param.queueBlock(currentBlock, node.getTrueBranch(), "true", EdgeType.COND_TRUE_FLOW);
+            param.queueBlock(currentBlock, node.getFalseBranch(), "false", EdgeType.COND_FALSE_FLOW);
             return delegate.visit(param, node);
         }
 
@@ -1403,8 +1402,8 @@ public final class Disassembler {
             final String description = showWithArguments("invoke", node.getValueHandle(), node.getArguments());
             param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            param.queueBlock(currentBlock, node.getCatchBlock(), "catch", DotNodeVisitor.EdgeType.CONTROL_FLOW);
-            param.queueBlock(currentBlock, node.getResumeTarget(), "resume", DotNodeVisitor.EdgeType.CONTROL_FLOW);
+            param.queueBlock(currentBlock, node.getCatchBlock(), "catch", EdgeType.CONTROL_FLOW);
+            param.queueBlock(currentBlock, node.getResumeTarget(), "resume", EdgeType.CONTROL_FLOW);
             return delegate.visit(param, node);
         }
 
@@ -1414,7 +1413,7 @@ public final class Disassembler {
             final String description = showWithArguments("invoke-no-return", node.getValueHandle(), node.getArguments());
             param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            param.queueBlock(currentBlock, node.getCatchBlock(), "catch", DotNodeVisitor.EdgeType.CONTROL_FLOW);
+            param.queueBlock(currentBlock, node.getCatchBlock(), "catch", EdgeType.CONTROL_FLOW);
             return delegate.visit(param, node);
         }
 
@@ -1424,8 +1423,8 @@ public final class Disassembler {
             final String description = "jsr";
             param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            param.queueBlock(currentBlock, node.getResumeTarget(), "ret", DotNodeVisitor.EdgeType.RET_RESUME_FLOW);
-            param.queueBlock(currentBlock, node.getJsrTarget(), "to", DotNodeVisitor.EdgeType.CONTROL_FLOW);
+            param.queueBlock(currentBlock, node.getResumeTarget(), "ret", EdgeType.RET_RESUME_FLOW);
+            param.queueBlock(currentBlock, node.getJsrTarget(), "to", EdgeType.CONTROL_FLOW);
             return delegate.visit(param, node);
         }
 
@@ -1454,7 +1453,7 @@ public final class Disassembler {
             param.addLine(description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
             for (int i = 0; i < node.getNumberOfValues(); i++) {
-                param.queueBlock(currentBlock, node.getTargetForIndex(i), String.valueOf(node.getValueForIndex(i)), DotNodeVisitor.EdgeType.COND_TRUE_FLOW);
+                param.queueBlock(currentBlock, node.getTargetForIndex(i), String.valueOf(node.getValueForIndex(i)), EdgeType.COND_TRUE_FLOW);
             }
             return delegate.visit(param, node);
         }
@@ -1474,7 +1473,7 @@ public final class Disassembler {
             final String description = showWithArguments("tail-invoke", node.getValueHandle(), node.getArguments());
             param.addLine(id + " = " + description, node);
             param.nodeInfo.put(node, new NodeInfo(id, description));
-            param.queueBlock(currentBlock, node.getCatchBlock(), "catch", DotNodeVisitor.EdgeType.CONTROL_FLOW);
+            param.queueBlock(currentBlock, node.getCatchBlock(), "catch", EdgeType.CONTROL_FLOW);
             return delegate.visit(param, node);
         }
 
