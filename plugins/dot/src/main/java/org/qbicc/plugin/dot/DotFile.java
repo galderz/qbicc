@@ -37,7 +37,7 @@ final class DotFile {
                 label = <
                 <table border="0" cellborder="1" cellspacing="0">
                 """
-                    .formatted(block.id())
+                .formatted(block.id())
             );
 
             final List<String> lines = block.lines();
@@ -49,7 +49,7 @@ final class DotFile {
                     """
                     <tr><td align="text" port="%d" bgcolor="%s">%s<br align="left"/></td></tr>
                     """
-                        .formatted(i, Objects.nonNull(lineColor) ? lineColor : "white", line)
+                    .formatted(i, Objects.nonNull(lineColor) ? lineColor : "white", line)
                 );
             }
 
