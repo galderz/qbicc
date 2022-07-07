@@ -226,6 +226,7 @@ public final class Disassembler {
         PhiValue phi;
         while ((phi = phiQueue.poll()) != null) {
             final BlockInfo blockInfo = blocks.get(phi.getPinnedBlock());
+            // Block info for pinned block might be temporary null if not yet visited, but it will eventually be visited
             if (Objects.nonNull(blockInfo)) {
                 final Integer phiIndex = blockInfo.phiIndexes.get(phi);
                 final StringBuilder phiLine = new StringBuilder(blockInfo.lines.get(phiIndex));
