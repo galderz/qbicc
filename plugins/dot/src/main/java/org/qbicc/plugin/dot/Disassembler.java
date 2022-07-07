@@ -226,9 +226,6 @@ public final class Disassembler {
         PhiValue phi;
         while ((phi = phiQueue.poll()) != null) {
             final BlockInfo blockInfo = blocks.get(phi.getPinnedBlock());
-            // TODO all blocks (unless unreachable) should probably be there
-            //      if some are missing it could be due to blocks not yet visited
-            //      revisited the check once all nodes are handled
             if (Objects.nonNull(blockInfo)) {
                 final Integer phiIndex = blockInfo.phiIndexes.get(phi);
                 final StringBuilder phiLine = new StringBuilder(blockInfo.lines.get(phiIndex));
