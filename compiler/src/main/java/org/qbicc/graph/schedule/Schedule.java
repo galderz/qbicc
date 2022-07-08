@@ -62,7 +62,7 @@ public interface Schedule {
         for (Map.Entry<BasicBlock, BlockInfo> entry : blockInfos.entrySet()) {
             final BlockInfo blockInfo = entry.getValue();
             allBlocks[blockInfo.index - 1] = blockInfo;
-            entry.getKey().setId(blockInfo.index);
+            entry.getKey().setIndex(blockInfo.index);
         }
         // 2. Now execute algorithm to get dominators mapping
         new DominatorFinder(allBlocks).main();

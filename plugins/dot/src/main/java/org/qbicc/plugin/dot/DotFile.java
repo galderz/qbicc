@@ -1,9 +1,13 @@
 package org.qbicc.plugin.dot;
 
+import org.qbicc.graph.BasicBlock;
+
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 final class DotFile {
@@ -25,11 +29,7 @@ final class DotFile {
             """
         );
 
-        final List<Disassembler.BlockData> blocks = new ArrayList<>(disassembler.getBlocks().values());
-        // Sort blocks by id so that they can easily be read top-down, following the control graph
-        blocks.sort(Comparator.comparing(Disassembler.BlockData::id));
-
-        for (Disassembler.BlockData block : blocks) {
+        for (Map.Entry<BasicBlock, Disassembler.BlockData> entry : disassembler.getSortedBlocks()) {
             out.append(
                 """
                 b%d [
@@ -37,13 +37,14 @@ final class DotFile {
                 label = <
                 <table border="0" cellborder="1" cellspacing="0">
                 """
-                .formatted(block.id())
+                .formatted(entry.getKey().getIndex())
             );
 
-            final List<String> lines = block.lines();
+            final Disassembler.BlockData blockData = entry.getValue();
+            final List<String> lines = blockData.lines();
             for (int i = 0; i < lines.size(); i++) {
                 final String line = formatLine(lines.get(i));
-                final String lineColor = block.lineColors().get(i);
+                final String lineColor = blockData.lineColors().get(i);
 
                 out.append(
                     """
@@ -68,8 +69,8 @@ final class DotFile {
                 b%d -> b%d [label = %s, style = %s, color = %s];
                 """
                 .formatted(
-                    blockEdge.from().getId()
-                    , blockEdge.to().getId()
+                    blockEdge.from().getIndex()
+                    , blockEdge.to().getIndex()
                     , blockEdge.label()
                     , blockEdge.edgeType().style()
                     , blockEdge.edgeType().color()

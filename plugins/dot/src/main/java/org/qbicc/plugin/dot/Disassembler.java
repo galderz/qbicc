@@ -2,6 +2,8 @@ package org.qbicc.plugin.dot;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -225,16 +227,11 @@ public final class Disassembler {
             if (Objects.nonNull(blockInfo)) {
                 final Integer phiIndex = blockInfo.phiIndexes.get(phi);
                 final String phiValues = phi.getPinnedBlock().getIncoming().stream()
-                    .map(incomingBlock -> showIncomingPhiValues(incomingBlock, phi))
+                    .map(block -> "b" + block.getIndex() + " " + visitor.show(phi.getValueForInput(block.getTerminator())))
                     .collect(Collectors.joining(", ", " ", ""));
                 blockInfo.lines.set(phiIndex, blockInfo.lines.get(phiIndex) + phiValues);
             }
         }
-    }
-
-    String showIncomingPhiValues(BasicBlock block, PhiValue phi) {
-        String value = visitor.show(phi.getValueForInput(block.getTerminator()));
-        return String.format("b%d %s", block.getId(), value);
     }
 
     void disassemble(BasicBlock block) {
@@ -242,7 +239,7 @@ public final class Disassembler {
 
         currentNodeId = 0;
         currentBlock = block;
-        blocks.put(block, new BlockData(currentBlock.getId(), new ArrayList<>(), new HashMap<>(), new HashMap<>()));
+        blocks.put(block, new BlockData(new ArrayList<>(), new HashMap<>(), new HashMap<>()));
 
         for (Node node : nodes) {
             if (!(node instanceof Terminator)) {
@@ -252,8 +249,11 @@ public final class Disassembler {
         disassemble(block.getTerminator());
     }
 
-    Map<BasicBlock, BlockData> getBlocks() {
-        return blocks;
+    Collection<Map.Entry<BasicBlock, BlockData>> getSortedBlocks() {
+        final List<Map.Entry<BasicBlock, Disassembler.BlockData>> blockList = new ArrayList<>(blocks.entrySet());
+        // Sort blocks by id so that they can easily be read top-down, following the control graph
+        blockList.sort(Comparator.comparing(e -> e.getKey().getIndex()));
+        return blockList;
     }
 
     List<BlockEdge> getBlockEdges() {
@@ -280,7 +280,7 @@ public final class Disassembler {
         lines.add(line);
         final int lineIndex = lines.size() - 1;
         for (Node node : nodes) {
-            cellIds.put(node, new CellId(currentBlock.getId(), lineIndex));
+            cellIds.put(node, new CellId(currentBlock.getIndex(), lineIndex));
         }
         return lineIndex;
     }
@@ -291,7 +291,7 @@ public final class Disassembler {
     }
 
     private String nextId() {
-        final String nextId = "%b" + currentBlock.getId() + "." + currentNodeId;
+        final String nextId = "%b" + currentBlock.getIndex() + "." + currentNodeId;
         incrementId();
         return nextId;
     }
@@ -330,7 +330,7 @@ public final class Disassembler {
 
     // The vast majority of lines will have the same color.
     // Hence, keep just a small collection for those lines that have a different color.
-    record BlockData(int id, List<String> lines, Map<Integer, String> lineColors, Map<PhiValue, Integer> phiIndexes) {}
+    record BlockData(List<String> lines, Map<Integer, String> lineColors, Map<PhiValue, Integer> phiIndexes) {}
 
     record BlockEdge(BasicBlock from, BasicBlock to, String label, DotAttributes edgeType) {}
 
