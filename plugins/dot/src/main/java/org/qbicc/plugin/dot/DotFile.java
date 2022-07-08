@@ -25,11 +25,11 @@ final class DotFile {
             """
         );
 
-        final List<Disassembler.BlockInfo> blocks = new ArrayList<>(disassembler.getBlocks().values());
+        final List<Disassembler.BlockData> blocks = new ArrayList<>(disassembler.getBlocks().values());
         // Sort blocks by id so that they can easily be read top-down, following the control graph
-        blocks.sort(Comparator.comparing(Disassembler.BlockInfo::id));
+        blocks.sort(Comparator.comparing(Disassembler.BlockData::id));
 
-        for (Disassembler.BlockInfo block : blocks) {
+        for (Disassembler.BlockData block : blocks) {
             out.append(
                 """
                 b%d [
@@ -68,8 +68,8 @@ final class DotFile {
                 b%d -> b%d [label = %s, style = %s, color = %s];
                 """
                 .formatted(
-                    disassembler.findBlockId(blockEdge.from())
-                    , disassembler.findBlockId(blockEdge.to())
+                    blockEdge.from().getId()
+                    , blockEdge.to().getId()
                     , blockEdge.label()
                     , blockEdge.edgeType().style()
                     , blockEdge.edgeType().color()

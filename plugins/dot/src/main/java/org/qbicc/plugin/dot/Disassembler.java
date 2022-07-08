@@ -165,7 +165,7 @@ public final class Disassembler {
     private final Schedule schedule;
     private final DisassembleVisitor visitor;
     private final ExecutableElement element;
-    private final Map<BasicBlock, BlockInfo> blocks = new HashMap<>();
+    private final Map<BasicBlock, BlockData> blocks = new HashMap<>();
     private final Map<Node, NodeInfo> nodeInfo = new HashMap<>();
     private final Set<BasicBlock> blockQueued = ConcurrentHashMap.newKeySet();
     private final Queue<BasicBlock> blockQueue = new ArrayDeque<>();
@@ -174,7 +174,6 @@ public final class Disassembler {
     private final Queue<PhiValue> phiQueue = new ArrayDeque<>();
     private final Map<Node, CellId> cellIds = new HashMap<>();
     private BasicBlock currentBlock;
-    private int currentBlockId;
     private int currentNodeId;
 
     Disassembler(BasicBlock entryBlock, ExecutableElement element, CompilationContext ctxt, BiFunction<CompilationContext, NodeVisitor<Disassembler, Void, Void, Void, Void>, NodeVisitor<Disassembler, Void, Void, Void, Void>> nodeVisitorFactory) {
@@ -189,7 +188,7 @@ public final class Disassembler {
     }
 
     public void setLineColor(String color) {
-        final BlockInfo blockInfo = blocks.get(currentBlock);
+        final BlockData blockInfo = blocks.get(currentBlock);
         final List<String> lines = blockInfo.lines;
         blockInfo.lineColors.put(lines.size() - 1, color);
     }
@@ -212,10 +211,6 @@ public final class Disassembler {
         } while (!blockQueue.isEmpty() || !phiQueue.isEmpty());
     }
 
-    int findBlockId(BasicBlock block) {
-        return blocks.get(block).id;
-    }
-
     private void processBlockQueue() {
         do {
             disassemble(blockQueue.poll());
@@ -225,7 +220,7 @@ public final class Disassembler {
     private void processPhiQueue() {
         while (!phiQueue.isEmpty()) {
             final PhiValue phi = phiQueue.poll();
-            final BlockInfo blockInfo = blocks.get(phi.getPinnedBlock());
+            final BlockData blockInfo = blocks.get(phi.getPinnedBlock());
             // Block info for pinned block might be temporary null if not yet visited, but it will eventually be visited
             if (Objects.nonNull(blockInfo)) {
                 final Integer phiIndex = blockInfo.phiIndexes.get(phi);
@@ -238,19 +233,8 @@ public final class Disassembler {
     }
 
     String showIncomingPhiValues(BasicBlock block, PhiValue phi) {
-        final BlockInfo incomingBlockInfo = getOrDisassembleBlock(block);
         String value = visitor.show(phi.getValueForInput(block.getTerminator()));
-        return String.format("b%d %s", incomingBlockInfo.id, value);
-    }
-
-    private BlockInfo getOrDisassembleBlock(BasicBlock block) {
-        final BlockInfo blockInfo = blocks.get(block);
-        if (Objects.nonNull(blockInfo)) {
-            return blockInfo;
-        }
-        
-        disassemble(block);
-        return blocks.get(block);
+        return String.format("b%d %s", block.getId(), value);
     }
 
     void disassemble(BasicBlock block) {
@@ -258,7 +242,7 @@ public final class Disassembler {
 
         currentNodeId = 0;
         currentBlock = block;
-        blocks.put(block, new BlockInfo(currentBlockId, new ArrayList<>(), new HashMap<>(), new HashMap<>()));
+        blocks.put(block, new BlockData(currentBlock.getId(), new ArrayList<>(), new HashMap<>(), new HashMap<>()));
 
         for (Node node : nodes) {
             if (!(node instanceof Terminator)) {
@@ -266,10 +250,9 @@ public final class Disassembler {
             }
         }
         disassemble(block.getTerminator());
-        incrementBlockId();
     }
 
-    Map<BasicBlock, BlockInfo> getBlocks() {
+    Map<BasicBlock, BlockData> getBlocks() {
         return blocks;
     }
 
@@ -297,7 +280,7 @@ public final class Disassembler {
         lines.add(line);
         final int lineIndex = lines.size() - 1;
         for (Node node : nodes) {
-            cellIds.put(node, new CellId(currentBlockId, lineIndex));
+            cellIds.put(node, new CellId(currentBlock.getId(), lineIndex));
         }
         return lineIndex;
     }
@@ -307,12 +290,8 @@ public final class Disassembler {
         blocks.get(currentBlock).phiIndexes.put(node, index);
     }
 
-    private void incrementBlockId() {
-        currentBlockId++;
-    }
-
     private String nextId() {
-        final String nextId = "%b" + currentBlockId + "." + currentNodeId;
+        final String nextId = "%b" + currentBlock.getId() + "." + currentNodeId;
         incrementId();
         return nextId;
     }
@@ -351,7 +330,7 @@ public final class Disassembler {
 
     // The vast majority of lines will have the same color.
     // Hence, keep just a small collection for those lines that have a different color.
-    record BlockInfo(int id, List<String> lines, Map<Integer, String> lineColors, Map<PhiValue, Integer> phiIndexes) {}
+    record BlockData(int id, List<String> lines, Map<Integer, String> lineColors, Map<PhiValue, Integer> phiIndexes) {}
 
     record BlockEdge(BasicBlock from, BasicBlock to, String label, DotAttributes edgeType) {}
 

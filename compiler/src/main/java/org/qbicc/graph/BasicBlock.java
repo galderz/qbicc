@@ -16,6 +16,7 @@ public final class BasicBlock {
     private boolean reachable;
     private Set<BasicBlock> incoming = Set.of();
     private Set<Loop> loops = Set.of();
+    private int id;
 
     BasicBlock(final BlockEntry blockEntry, final Terminator terminator) {
         this.blockEntry = blockEntry;
@@ -101,6 +102,14 @@ public final class BasicBlock {
             }
         }
         return false;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public int getId() {
+        return id;
     }
 
     public static final class Loop {
